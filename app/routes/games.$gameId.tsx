@@ -8,6 +8,21 @@ import { ScoreBoard, GameResults } from "../components/ScoreBoard";
 import { useState, useEffect } from "react";
 import { cn } from "../lib/utils";
 
+// Validate that a string could be a valid Convex ID
+// Convex IDs are URL-safe base64 strings with specific format:
+// - Start with 'j' or 'k' prefix
+// - Contain underscores
+// - Are 20+ characters long
+function isValidConvexId(id: string): boolean {
+  // Convex IDs have a specific format: prefix + encoded data
+  // They're typically 20-40 characters with underscores
+  // Example: j572s8hhdegmch_am4wde6r2zh2g71gt
+  if (id.length < 20) return false;
+  if (!/^[jk]/.test(id)) return false;
+  if (!id.includes("_")) return false;
+  return /^[a-zA-Z0-9_]+$/.test(id);
+}
+
 export function meta() {
   return [
     { title: "Game | AI Against Humanity" },
@@ -19,10 +34,13 @@ export default function GamePage() {
   const { gameId } = useParams();
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
-  // Convex queries
+  // Validate gameId format before querying
+  const isValidId = gameId ? isValidConvexId(gameId) : false;
+
+  // Convex queries - skip if ID is not valid format
   const gameState = useQuery(
     api.games.getGame,
-    gameId ? { gameId: gameId as Id<"games"> } : "skip"
+    gameId && isValidId ? { gameId: gameId as Id<"games"> } : "skip"
   );
 
   const submissions = useQuery(
@@ -109,7 +127,7 @@ export default function GamePage() {
     }
   }, [submissions?.length, gameState?.currentRound?.status]);
 
-  if (!gameId) {
+  if (!gameId || !isValidId) {
     return (
       <div className="container mx-auto px-4 py-12 text-center">
         <p className="text-red-400">Invalid game ID</p>
