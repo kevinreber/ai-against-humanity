@@ -33,47 +33,74 @@
 
 ```
 Frontend:     Remix v2 + React Router + TypeScript + Tailwind CSS
-Backend:      Remix Loaders/Actions + Node.js
-Database:     PostgreSQL (game data) + Redis (real-time state)
-Real-time:    Socket.io or WebSockets
+Backend:      Convex (real-time backend-as-a-service)
+Database:     Convex (built-in real-time database)
+Cache:        Upstash Redis (rate limiting, sessions, temporary state)
+Real-time:    Convex subscriptions (built-in, no WebSocket setup needed)
 AI:           OpenAI API / Anthropic Claude API / Local LLMs
-Auth:         remix-auth or Clerk
-Hosting:      Fly.io / Railway / Render (full-stack)
+Auth:         Convex Auth or Clerk
+Hosting:      Vercel (frontend) + Convex Cloud (backend)
 ```
 
-### Why Remix v2?
+### Why This Stack?
 
-- **Server-first architecture** - Better performance with SSR and streaming
-- **Built-in data loading** - Loaders and actions eliminate client-side fetch boilerplate
-- **React Router v7** - Powerful nested routing with data co-location
-- **Progressive enhancement** - Works without JavaScript, enhances with it
-- **Better error handling** - Error boundaries at route level
-- **Form handling** - Native form submissions with progressive enhancement
+**Remix v2**
+- Server-first architecture with SSR and streaming
+- React Router v7 with powerful nested routing
+- Progressive enhancement and better error handling
+- Works seamlessly with Convex on Vercel
+
+**Convex**
+- Real-time database with automatic subscriptions (no WebSocket setup!)
+- TypeScript-first with end-to-end type safety
+- Server functions: queries (reads), mutations (writes), actions (external APIs)
+- Built-in scheduling for AI turn timeouts
+- Zero configuration for real-time sync
+
+**Upstash Redis**
+- Serverless Redis (pay-per-request)
+- Rate limiting for AI API calls
+- Session caching and temporary game state
+- Global edge deployment
+
+**Vercel**
+- Optimized for Remix deployments
+- Edge functions for low latency
+- Preview deployments for every PR
 
 ### System Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         Client Layer                             │
+│                      Vercel (Frontend)                           │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │              Remix v2 + React Router                        ││
+│  │  ┌─────────────┐  ┌─────────────┐  ┌───────────────────┐   ││
+│  │  │   Game UI   │  │   Lobby     │  │   Leaderboards    │   ││
+│  │  └─────────────┘  └─────────────┘  └───────────────────┘   ││
+│  └─────────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────────┘
+                              │
+              useQuery / useMutation (real-time)
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      Convex Cloud                                │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
-│  │   Game UI   │  │   Lobby     │  │   Leaderboards/Stats    │  │
+│  │  Queries    │  │  Mutations  │  │   Actions (AI calls)    │  │
+│  │  (reads)    │  │  (writes)   │  │   (external APIs)       │  │
 │  └─────────────┘  └─────────────┘  └─────────────────────────┘  │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │              Convex Database (real-time sync)               ││
+│  └─────────────────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                         API Layer                                │
+│                      External Services                           │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
-│  │  Game API   │  │  AI Service │  │   WebSocket Server      │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                         Data Layer                               │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
-│  │ PostgreSQL  │  │    Redis    │  │   AI Model Providers    │  │
-│  │ (Persistent)│  │ (Real-time) │  │ (OpenAI/Anthropic/etc)  │  │
+│  │   Upstash   │  │   OpenAI    │  │      Anthropic          │  │
+│  │   Redis     │  │   API       │  │      Claude API         │  │
 │  └─────────────┘  └─────────────┘  └─────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -125,84 +152,116 @@ For AI-judged rounds:
 
 ---
 
-## Database Schema
+## Convex Database Schema
 
-### Core Tables
+### Schema Definition
 
-```sql
--- Users
-CREATE TABLE users (
-  id UUID PRIMARY KEY,
-  username VARCHAR(50) UNIQUE,
-  email VARCHAR(255) UNIQUE,
-  avatar_url TEXT,
-  games_played INT DEFAULT 0,
-  games_won INT DEFAULT 0,
-  created_at TIMESTAMP DEFAULT NOW()
-);
+```typescript
+// convex/schema.ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
 
--- Cards
-CREATE TABLE cards (
-  id UUID PRIMARY KEY,
-  type ENUM('prompt', 'response'),
-  text TEXT NOT NULL,
-  pack_id UUID REFERENCES card_packs(id),
-  is_ai_generated BOOLEAN DEFAULT FALSE,
-  created_at TIMESTAMP DEFAULT NOW()
-);
+export default defineSchema({
+  // Users
+  users: defineTable({
+    clerkId: v.optional(v.string()),      // For Clerk auth
+    username: v.string(),
+    email: v.string(),
+    avatarUrl: v.optional(v.string()),
+    gamesPlayed: v.number(),
+    gamesWon: v.number(),
+  })
+    .index("by_clerk_id", ["clerkId"])
+    .index("by_username", ["username"])
+    .index("by_email", ["email"]),
 
--- Card Packs
-CREATE TABLE card_packs (
-  id UUID PRIMARY KEY,
-  name VARCHAR(100),
-  description TEXT,
-  is_official BOOLEAN DEFAULT FALSE,
-  creator_id UUID REFERENCES users(id)
-);
+  // Cards
+  cards: defineTable({
+    type: v.union(v.literal("prompt"), v.literal("response")),
+    text: v.string(),
+    packId: v.id("cardPacks"),
+    isAiGenerated: v.boolean(),
+  })
+    .index("by_pack", ["packId"])
+    .index("by_type", ["type"]),
 
--- Games
-CREATE TABLE games (
-  id UUID PRIMARY KEY,
-  status ENUM('lobby', 'playing', 'finished'),
-  game_mode VARCHAR(50),
-  max_players INT DEFAULT 8,
-  points_to_win INT DEFAULT 10,
-  current_round INT DEFAULT 0,
-  created_at TIMESTAMP DEFAULT NOW()
-);
+  // Card Packs
+  cardPacks: defineTable({
+    name: v.string(),
+    description: v.string(),
+    isOfficial: v.boolean(),
+    creatorId: v.optional(v.id("users")),
+  })
+    .index("by_creator", ["creatorId"]),
 
--- Game Players (humans and AI)
-CREATE TABLE game_players (
-  id UUID PRIMARY KEY,
-  game_id UUID REFERENCES games(id),
-  user_id UUID REFERENCES users(id) NULL,
-  ai_persona_id VARCHAR(50) NULL,
-  is_ai BOOLEAN DEFAULT FALSE,
-  score INT DEFAULT 0,
-  is_judge BOOLEAN DEFAULT FALSE
-);
+  // Games
+  games: defineTable({
+    status: v.union(
+      v.literal("lobby"),
+      v.literal("playing"),
+      v.literal("finished")
+    ),
+    gameMode: v.string(),
+    maxPlayers: v.number(),
+    pointsToWin: v.number(),
+    currentRound: v.number(),
+    hostId: v.id("users"),
+    inviteCode: v.string(),
+  })
+    .index("by_status", ["status"])
+    .index("by_invite_code", ["inviteCode"])
+    .index("by_host", ["hostId"]),
 
--- Rounds
-CREATE TABLE rounds (
-  id UUID PRIMARY KEY,
-  game_id UUID REFERENCES games(id),
-  round_number INT,
-  prompt_card_id UUID REFERENCES cards(id),
-  judge_player_id UUID REFERENCES game_players(id),
-  winner_player_id UUID REFERENCES game_players(id),
-  status ENUM('submitting', 'judging', 'complete')
-);
+  // Game Players (humans and AI)
+  gamePlayers: defineTable({
+    gameId: v.id("games"),
+    userId: v.optional(v.id("users")),     // null for AI players
+    aiPersonaId: v.optional(v.string()),   // e.g., "chaotic-carl"
+    isAi: v.boolean(),
+    score: v.number(),
+    isJudge: v.boolean(),
+    hand: v.array(v.id("cards")),          // Player's current hand
+  })
+    .index("by_game", ["gameId"])
+    .index("by_user", ["userId"]),
 
--- Submissions
-CREATE TABLE submissions (
-  id UUID PRIMARY KEY,
-  round_id UUID REFERENCES rounds(id),
-  player_id UUID REFERENCES game_players(id),
-  card_id UUID REFERENCES cards(id) NULL,
-  ai_generated_text TEXT NULL,
-  submitted_at TIMESTAMP DEFAULT NOW()
-);
+  // Rounds
+  rounds: defineTable({
+    gameId: v.id("games"),
+    roundNumber: v.number(),
+    promptCardId: v.id("cards"),
+    judgePlayerId: v.id("gamePlayers"),
+    winnerPlayerId: v.optional(v.id("gamePlayers")),
+    status: v.union(
+      v.literal("submitting"),
+      v.literal("judging"),
+      v.literal("complete")
+    ),
+  })
+    .index("by_game", ["gameId"])
+    .index("by_game_and_round", ["gameId", "roundNumber"]),
+
+  // Submissions
+  submissions: defineTable({
+    roundId: v.id("rounds"),
+    playerId: v.id("gamePlayers"),
+    cardId: v.optional(v.id("cards")),     // null if AI-generated
+    aiGeneratedText: v.optional(v.string()),
+  })
+    .index("by_round", ["roundId"])
+    .index("by_player", ["playerId"]),
+});
 ```
+
+### Convex vs SQL Benefits
+
+| Feature | Convex | Traditional SQL |
+|---------|--------|-----------------|
+| Real-time sync | Automatic | Manual WebSocket setup |
+| Type safety | End-to-end TypeScript | Separate ORM layer |
+| Indexes | Declarative | Manual migration |
+| Relations | Document references | Foreign keys + JOINs |
+| Scaling | Automatic | Manual configuration |
 
 ---
 
@@ -210,25 +269,26 @@ CREATE TABLE submissions (
 
 ### Phase 1: MVP (Core Game Loop)
 
-- [ ] Project setup (Remix v2, TypeScript, Tailwind)
+- [ ] Project setup (Remix v2 + Convex + Tailwind)
+- [ ] Configure Convex schema and seed card data
 - [ ] Basic UI components (cards, game board, player list)
-- [ ] Card database with seed data
-- [ ] Remix loaders for data fetching
+- [ ] Convex queries for real-time game state
 - [ ] Single-player vs AI mode
-- [ ] Basic AI response generation
+- [ ] Convex actions for AI response generation
 - [ ] Round flow (draw prompt → AI responds → player judges)
-- [ ] Simple scoring system
+- [ ] Simple scoring system with mutations
+- [ ] Deploy to Vercel + Convex Cloud
 
 ### Phase 2: Multiplayer Foundation
 
-- [ ] User authentication (remix-auth with OAuth providers)
-- [ ] Session management with Remix cookie sessions
-- [ ] Lobby system (create/join games) with loaders/actions
-- [ ] Custom Express server with Socket.io integration
-- [ ] Real-time game state synchronization
+- [ ] User authentication (Convex Auth or Clerk)
+- [ ] Lobby system with invite codes
+- [ ] Real-time game state (automatic with Convex!)
 - [ ] Multiple human players support
 - [ ] Rotating judge system
+- [ ] Upstash Redis for rate limiting AI calls
 - [ ] Game history and replays
+- [ ] Scheduled functions for turn timeouts
 
 ### Phase 3: AI Enhancement
 
@@ -257,7 +317,195 @@ CREATE TABLE submissions (
 
 ---
 
-## Remix Routes & API
+## Convex Functions
+
+Convex uses three types of functions:
+- **Queries** - Read data (automatically reactive/real-time)
+- **Mutations** - Write data (transactional)
+- **Actions** - Call external APIs (like AI services)
+
+### Game Functions
+
+```typescript
+// convex/games.ts
+import { query, mutation } from "./_generated/server";
+import { v } from "convex/values";
+
+// Query: Get game state (real-time!)
+export const getGame = query({
+  args: { gameId: v.id("games") },
+  handler: async (ctx, { gameId }) => {
+    const game = await ctx.db.get(gameId);
+    const players = await ctx.db
+      .query("gamePlayers")
+      .withIndex("by_game", (q) => q.eq("gameId", gameId))
+      .collect();
+    const currentRound = await ctx.db
+      .query("rounds")
+      .withIndex("by_game_and_round", (q) =>
+        q.eq("gameId", gameId).eq("roundNumber", game?.currentRound ?? 0)
+      )
+      .first();
+    return { game, players, currentRound };
+  },
+});
+
+// Mutation: Create a new game
+export const createGame = mutation({
+  args: {
+    hostId: v.id("users"),
+    gameMode: v.string(),
+    maxPlayers: v.number(),
+    pointsToWin: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const inviteCode = generateInviteCode();
+    const gameId = await ctx.db.insert("games", {
+      ...args,
+      status: "lobby",
+      currentRound: 0,
+      inviteCode,
+    });
+    // Add host as first player
+    await ctx.db.insert("gamePlayers", {
+      gameId,
+      userId: args.hostId,
+      isAi: false,
+      score: 0,
+      isJudge: false,
+      hand: [],
+    });
+    return { gameId, inviteCode };
+  },
+});
+
+// Mutation: Join a game
+export const joinGame = mutation({
+  args: { gameId: v.id("games"), userId: v.id("users") },
+  handler: async (ctx, { gameId, userId }) => {
+    const game = await ctx.db.get(gameId);
+    if (game?.status !== "lobby") throw new Error("Game already started");
+
+    await ctx.db.insert("gamePlayers", {
+      gameId,
+      userId,
+      isAi: false,
+      score: 0,
+      isJudge: false,
+      hand: [],
+    });
+  },
+});
+
+// Mutation: Submit a card
+export const submitCard = mutation({
+  args: {
+    roundId: v.id("rounds"),
+    playerId: v.id("gamePlayers"),
+    cardId: v.optional(v.id("cards")),
+    aiGeneratedText: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.insert("submissions", args);
+  },
+});
+
+// Mutation: Select winner
+export const selectWinner = mutation({
+  args: { roundId: v.id("rounds"), winnerPlayerId: v.id("gamePlayers") },
+  handler: async (ctx, { roundId, winnerPlayerId }) => {
+    // Update round
+    await ctx.db.patch(roundId, {
+      winnerPlayerId,
+      status: "complete",
+    });
+    // Update player score
+    const player = await ctx.db.get(winnerPlayerId);
+    if (player) {
+      await ctx.db.patch(winnerPlayerId, { score: player.score + 1 });
+    }
+  },
+});
+```
+
+### AI Functions (Actions)
+
+```typescript
+// convex/ai.ts
+import { action } from "./_generated/server";
+import { v } from "convex/values";
+import Anthropic from "@anthropic-ai/sdk";
+
+// Action: Generate AI response
+export const generateResponse = action({
+  args: {
+    prompt: v.string(),
+    personaId: v.string(),
+  },
+  handler: async (ctx, { prompt, personaId }) => {
+    const persona = AI_PERSONAS[personaId];
+    const anthropic = new Anthropic();
+
+    const response = await anthropic.messages.create({
+      model: "claude-3-haiku-20240307",
+      max_tokens: 100,
+      temperature: persona.temperature,
+      system: persona.systemPrompt,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    return response.content[0].type === "text"
+      ? response.content[0].text
+      : "";
+  },
+});
+
+// Action: AI judges submissions
+export const judgeSubmissions = action({
+  args: {
+    promptText: v.string(),
+    submissions: v.array(v.object({
+      id: v.string(),
+      text: v.string(),
+    })),
+  },
+  handler: async (ctx, { promptText, submissions }) => {
+    const anthropic = new Anthropic();
+    // ... AI judging logic
+  },
+});
+```
+
+### Upstash Redis Integration
+
+```typescript
+// convex/rateLimit.ts
+import { action } from "./_generated/server";
+import { Redis } from "@upstash/redis";
+import { Ratelimit } from "@upstash/ratelimit";
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_URL!,
+  token: process.env.UPSTASH_REDIS_TOKEN!,
+});
+
+const ratelimit = new Ratelimit({
+  redis,
+  limiter: Ratelimit.slidingWindow(10, "1 m"), // 10 requests per minute
+});
+
+export const checkRateLimit = action({
+  args: { userId: v.string() },
+  handler: async (ctx, { userId }) => {
+    const { success, remaining } = await ratelimit.limit(userId);
+    return { allowed: success, remaining };
+  },
+});
+```
+
+---
+
+## Remix + Convex Integration
 
 ### Route Structure
 
@@ -267,168 +515,135 @@ app/
 │   ├── _index.tsx                    # Home page
 │   ├── games._index.tsx              # Game list / lobby
 │   ├── games.new.tsx                 # Create new game
-│   ├── games.$gameId.tsx             # Game layout
+│   ├── games.$gameId.tsx             # Game layout (real-time)
 │   ├── games.$gameId._index.tsx      # Game board
 │   ├── games.$gameId.lobby.tsx       # Pre-game lobby
-│   ├── games.$gameId.results.tsx     # Final results
-│   ├── api.ai.generate.tsx           # AI response generation
-│   ├── api.ai.judge.tsx              # AI judging
-│   └── api.ai.card.tsx               # AI card generation
+│   └── games.$gameId.results.tsx     # Final results
+├── components/
+│   └── ConvexProvider.tsx            # Convex client wrapper
+└── root.tsx
 ```
 
-### Loader/Action Pattern
+### Using Convex in Remix Components
 
 ```typescript
 // app/routes/games.$gameId.tsx
-import { json, type LoaderFunctionArgs, type ActionFunctionArgs } from "@remix-run/node";
-import { useLoaderData, useFetcher } from "@remix-run/react";
-
-// GET - Load game state
-export async function loader({ params }: LoaderFunctionArgs) {
-  const game = await getGame(params.gameId);
-  return json({ game });
-}
-
-// POST/PUT/DELETE - Handle game actions
-export async function action({ request, params }: ActionFunctionArgs) {
-  const formData = await request.formData();
-  const intent = formData.get("intent");
-
-  switch (intent) {
-    case "join":
-      return joinGame(params.gameId, formData);
-    case "submit":
-      return submitCard(params.gameId, formData);
-    case "judge":
-      return selectWinner(params.gameId, formData);
-    default:
-      throw new Response("Invalid action", { status: 400 });
-  }
-}
+import { useParams } from "@remix-run/react";
+import { useQuery, useMutation } from "convex/react";
+import { api } from "../../convex/_generated/api";
+import { Id } from "../../convex/_generated/dataModel";
 
 export default function GameRoute() {
-  const { game } = useLoaderData<typeof loader>();
-  const fetcher = useFetcher();
+  const { gameId } = useParams();
+
+  // Real-time game state - automatically updates!
+  const gameState = useQuery(api.games.getGame, {
+    gameId: gameId as Id<"games">,
+  });
+
+  // Mutations
+  const submitCard = useMutation(api.games.submitCard);
+  const selectWinner = useMutation(api.games.selectWinner);
+
+  if (!gameState) return <div>Loading...</div>;
+
+  const handleSubmit = async (cardId: Id<"cards">) => {
+    await submitCard({
+      roundId: gameState.currentRound!._id,
+      playerId: currentPlayerId,
+      cardId,
+    });
+  };
 
   return (
-    <fetcher.Form method="post">
-      <input type="hidden" name="intent" value="submit" />
-      {/* Game UI */}
-    </fetcher.Form>
+    <div>
+      <h1>Game: {gameState.game?.status}</h1>
+      <PlayerList players={gameState.players} />
+      <GameBoard
+        round={gameState.currentRound}
+        onSubmit={handleSubmit}
+      />
+    </div>
   );
 }
 ```
 
-### Resource Routes (API-only)
+### Convex Provider Setup
 
 ```typescript
-// app/routes/api.ai.generate.tsx
-export async function action({ request }: ActionFunctionArgs) {
-  const { prompt, persona } = await request.json();
-  const response = await generateAIResponse(prompt, persona);
-  return json({ response });
+// app/root.tsx
+import { ConvexProvider, ConvexReactClient } from "convex/react";
+
+const convex = new ConvexReactClient(process.env.CONVEX_URL!);
+
+export default function App() {
+  return (
+    <ConvexProvider client={convex}>
+      <Outlet />
+    </ConvexProvider>
+  );
 }
 ```
-
-### Game Management Actions
-
-| Route | Loader (GET) | Action (POST) |
-|-------|--------------|---------------|
-| `/games` | List games | Create game |
-| `/games/:id` | Game state | Join/Leave/Start |
-| `/games/:id/lobby` | Lobby state | Update settings |
-| `/games/:id` | Round state | Submit/Judge |
-
-### AI Resource Routes
-
-| Route | Action |
-|-------|--------|
-| `/api/ai/generate` | Generate AI response |
-| `/api/ai/judge` | AI judges submissions |
-| `/api/ai/card` | Generate new card |
-
-### Cards & Packs
-
-| Route | Loader | Action |
-|-------|--------|--------|
-| `/cards` | List cards | - |
-| `/packs` | List packs | Create pack |
-| `/packs/:id` | Pack details | Update pack |
 
 ---
 
-## Real-time with WebSockets
+## Real-time with Convex
 
-### Remix + Socket.io Setup
+### No WebSocket Setup Required!
 
-Since Remix doesn't have built-in WebSocket support, we'll run Socket.io alongside the Remix server:
+Convex handles real-time automatically. When you use `useQuery`, the component re-renders whenever the data changes - across all connected clients.
 
 ```typescript
-// server.ts (custom Express server)
-import { createRequestHandler } from "@remix-run/express";
-import express from "express";
-import { createServer } from "http";
-import { Server } from "socket.io";
+// This automatically updates in real-time for ALL players
+const gameState = useQuery(api.games.getGame, { gameId });
 
-const app = express();
-const httpServer = createServer(app);
-const io = new Server(httpServer);
+// When any player submits a card, everyone sees it instantly
+const submissions = useQuery(api.rounds.getSubmissions, { roundId });
+```
 
-// Socket.io handling
-io.on("connection", (socket) => {
-  socket.on("join-game", ({ gameId, playerId }) => {
-    socket.join(`game:${gameId}`);
-    io.to(`game:${gameId}`).emit("player-joined", { playerId });
-  });
-  // ... more events
+### Real-time Game Events
+
+| Event | How it Works |
+|-------|--------------|
+| Player joined | Query `gamePlayers` table updates |
+| Card submitted | Query `submissions` table updates |
+| Round started | Query `rounds` table updates |
+| Winner selected | Query updates score + round status |
+| Game ended | Query `games` status changes |
+
+### Scheduled Functions (Turn Timeouts)
+
+```typescript
+// convex/rounds.ts
+import { mutation, internalMutation } from "./_generated/server";
+import { internal } from "./_generated/api";
+
+export const startRound = mutation({
+  args: { gameId: v.id("games") },
+  handler: async (ctx, { gameId }) => {
+    const roundId = await ctx.db.insert("rounds", { /* ... */ });
+
+    // Schedule auto-timeout after 60 seconds
+    await ctx.scheduler.runAfter(
+      60000,
+      internal.rounds.autoTimeout,
+      { roundId }
+    );
+
+    return roundId;
+  },
 });
 
-// Remix request handler
-app.all("*", createRequestHandler({ build: require("./build") }));
-
-httpServer.listen(3000);
-```
-
-### Client → Server Events
-
-```typescript
-socket.emit('join-game', { gameId, playerId });
-socket.emit('submit-card', { roundId, cardId });
-socket.emit('select-winner', { roundId, submissionId });
-socket.emit('chat-message', { gameId, message });
-```
-
-### Server → Client Events
-
-```typescript
-socket.on('player-joined', { player });
-socket.on('round-started', { round, promptCard });
-socket.on('submission-received', { playerId }); // anonymous until reveal
-socket.on('all-submitted', { submissions }); // reveal phase
-socket.on('winner-selected', { winner, scores });
-socket.on('game-ended', { finalScores, winner });
-```
-
-### React Hook for Socket.io
-
-```typescript
-// app/hooks/useSocket.ts
-import { useEffect, useState } from "react";
-import { io, Socket } from "socket.io-client";
-
-export function useSocket(gameId: string) {
-  const [socket, setSocket] = useState<Socket | null>(null);
-
-  useEffect(() => {
-    const newSocket = io({ path: "/ws" });
-    newSocket.emit("join-game", { gameId });
-    setSocket(newSocket);
-
-    return () => { newSocket.close(); };
-  }, [gameId]);
-
-  return socket;
-}
+export const autoTimeout = internalMutation({
+  args: { roundId: v.id("rounds") },
+  handler: async (ctx, { roundId }) => {
+    const round = await ctx.db.get(roundId);
+    if (round?.status === "submitting") {
+      // Auto-submit for players who didn't respond
+      await ctx.db.patch(roundId, { status: "judging" });
+    }
+  },
+});
 ```
 
 ---
@@ -466,12 +681,13 @@ export function useSocket(gameId: string) {
 
 ## Security Considerations
 
-- Rate limit AI API calls to prevent abuse
-- Sanitize user-generated content
+- Rate limit AI API calls with Upstash Redis
+- Sanitize user-generated content in Convex mutations
 - Implement content moderation for custom cards
-- Secure WebSocket connections
-- Validate all game actions server-side
-- Implement anti-cheat measures
+- Convex handles auth and data access rules
+- All game logic runs server-side in Convex (no cheating)
+- Use Convex argument validation (`v.string()`, etc.)
+- Environment variables stored securely in Convex dashboard
 
 ---
 
@@ -492,23 +708,37 @@ export function useSocket(gameId: string) {
 1. Initialize Remix v2 project with TypeScript
    ```bash
    npx create-remix@latest ai-against-humanity
+   cd ai-against-humanity
    ```
-2. Set up Tailwind CSS and component library
+
+2. Set up Tailwind CSS
    ```bash
    npm install -D tailwindcss postcss autoprefixer
    npx tailwindcss init -p
    ```
-3. Configure database (Prisma + PostgreSQL recommended)
+
+3. Initialize Convex
    ```bash
-   npm install prisma @prisma/client
-   npx prisma init
+   npm install convex
+   npx convex dev  # Creates convex/ folder and starts dev server
    ```
-4. Create card component and basic game board UI
-5. Set up loaders/actions for game state management
-6. Implement single-player mode against one AI
-7. Add AI response generation with OpenAI/Claude
-8. Build the core game loop with Remix forms
-9. Iterate and expand from there
+
+4. Set up Upstash Redis
+   ```bash
+   npm install @upstash/redis @upstash/ratelimit
+   # Add UPSTASH_REDIS_URL and UPSTASH_REDIS_TOKEN to .env
+   ```
+
+5. Install AI SDK
+   ```bash
+   npm install @anthropic-ai/sdk openai
+   # Add ANTHROPIC_API_KEY to Convex environment variables
+   ```
+
+6. Create Convex schema and seed data
+7. Build UI components with real-time Convex queries
+8. Implement single-player mode against one AI
+9. Deploy: `vercel` + `npx convex deploy`
 
 ### Project Structure
 
@@ -520,18 +750,49 @@ ai-against-humanity/
 │   │   ├── GameBoard.tsx
 │   │   ├── PlayerList.tsx
 │   │   └── ScoreBoard.tsx
-│   ├── routes/           # Remix routes (pages + API)
-│   ├── services/         # Business logic
-│   │   ├── ai.server.ts  # AI integration
-│   │   ├── game.server.ts
-│   │   └── auth.server.ts
-│   ├── utils/            # Helpers
-│   ├── root.tsx          # App shell
+│   ├── routes/           # Remix routes (pages)
+│   │   ├── _index.tsx
+│   │   ├── games._index.tsx
+│   │   └── games.$gameId.tsx
+│   ├── hooks/            # Custom React hooks
+│   │   └── useGameState.ts
+│   ├── root.tsx          # App shell + ConvexProvider
 │   └── entry.*.tsx       # Remix entry points
-├── prisma/
-│   └── schema.prisma     # Database schema
+├── convex/               # Convex backend
+│   ├── _generated/       # Auto-generated types
+│   ├── schema.ts         # Database schema
+│   ├── games.ts          # Game queries/mutations
+│   ├── rounds.ts         # Round logic
+│   ├── ai.ts             # AI actions
+│   └── rateLimit.ts      # Upstash rate limiting
 ├── public/               # Static assets
+├── .env                  # Local env vars
 └── package.json
+```
+
+### Environment Variables
+
+```bash
+# .env.local (Remix/Vercel)
+CONVEX_URL=https://your-project.convex.cloud
+
+# Convex Dashboard (for actions)
+ANTHROPIC_API_KEY=sk-ant-...
+OPENAI_API_KEY=sk-...
+UPSTASH_REDIS_URL=https://...
+UPSTASH_REDIS_TOKEN=...
+```
+
+### Deployment
+
+```bash
+# Deploy Convex backend
+npx convex deploy
+
+# Deploy Remix to Vercel
+vercel
+
+# Or connect GitHub repo for auto-deploys
 ```
 
 ---
