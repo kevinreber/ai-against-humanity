@@ -32,14 +32,23 @@
 ### Tech Stack Recommendation
 
 ```
-Frontend:     React/Next.js + TypeScript + Tailwind CSS
-Backend:      Node.js + Express or Next.js API Routes
+Frontend:     Remix v2 + React Router + TypeScript + Tailwind CSS
+Backend:      Remix Loaders/Actions + Node.js
 Database:     PostgreSQL (game data) + Redis (real-time state)
 Real-time:    Socket.io or WebSockets
 AI:           OpenAI API / Anthropic Claude API / Local LLMs
-Auth:         NextAuth.js or Clerk
-Hosting:      Vercel (frontend) + Railway/Fly.io (backend)
+Auth:         remix-auth or Clerk
+Hosting:      Fly.io / Railway / Render (full-stack)
 ```
+
+### Why Remix v2?
+
+- **Server-first architecture** - Better performance with SSR and streaming
+- **Built-in data loading** - Loaders and actions eliminate client-side fetch boilerplate
+- **React Router v7** - Powerful nested routing with data co-location
+- **Progressive enhancement** - Works without JavaScript, enhances with it
+- **Better error handling** - Error boundaries at route level
+- **Form handling** - Native form submissions with progressive enhancement
 
 ### System Architecture
 
@@ -201,9 +210,10 @@ CREATE TABLE submissions (
 
 ### Phase 1: MVP (Core Game Loop)
 
-- [ ] Project setup (Next.js, TypeScript, Tailwind)
+- [ ] Project setup (Remix v2, TypeScript, Tailwind)
 - [ ] Basic UI components (cards, game board, player list)
 - [ ] Card database with seed data
+- [ ] Remix loaders for data fetching
 - [ ] Single-player vs AI mode
 - [ ] Basic AI response generation
 - [ ] Round flow (draw prompt → AI responds → player judges)
@@ -211,9 +221,11 @@ CREATE TABLE submissions (
 
 ### Phase 2: Multiplayer Foundation
 
-- [ ] User authentication
-- [ ] Lobby system (create/join games)
-- [ ] Real-time game state with WebSockets
+- [ ] User authentication (remix-auth with OAuth providers)
+- [ ] Session management with Remix cookie sessions
+- [ ] Lobby system (create/join games) with loaders/actions
+- [ ] Custom Express server with Socket.io integration
+- [ ] Real-time game state synchronization
 - [ ] Multiple human players support
 - [ ] Rotating judge system
 - [ ] Game history and replays
@@ -245,48 +257,139 @@ CREATE TABLE submissions (
 
 ---
 
-## API Endpoints
+## Remix Routes & API
 
-### Game Management
-
-```
-POST   /api/games              - Create new game
-GET    /api/games/:id          - Get game state
-POST   /api/games/:id/join     - Join a game
-POST   /api/games/:id/start    - Start the game
-DELETE /api/games/:id/leave    - Leave a game
-```
-
-### Gameplay
+### Route Structure
 
 ```
-GET    /api/games/:id/round         - Get current round
-POST   /api/games/:id/submit        - Submit a response
-POST   /api/games/:id/judge         - Judge picks winner
-GET    /api/games/:id/results       - Get final results
+app/
+├── routes/
+│   ├── _index.tsx                    # Home page
+│   ├── games._index.tsx              # Game list / lobby
+│   ├── games.new.tsx                 # Create new game
+│   ├── games.$gameId.tsx             # Game layout
+│   ├── games.$gameId._index.tsx      # Game board
+│   ├── games.$gameId.lobby.tsx       # Pre-game lobby
+│   ├── games.$gameId.results.tsx     # Final results
+│   ├── api.ai.generate.tsx           # AI response generation
+│   ├── api.ai.judge.tsx              # AI judging
+│   └── api.ai.card.tsx               # AI card generation
 ```
 
-### AI Services
+### Loader/Action Pattern
 
+```typescript
+// app/routes/games.$gameId.tsx
+import { json, type LoaderFunctionArgs, type ActionFunctionArgs } from "@remix-run/node";
+import { useLoaderData, useFetcher } from "@remix-run/react";
+
+// GET - Load game state
+export async function loader({ params }: LoaderFunctionArgs) {
+  const game = await getGame(params.gameId);
+  return json({ game });
+}
+
+// POST/PUT/DELETE - Handle game actions
+export async function action({ request, params }: ActionFunctionArgs) {
+  const formData = await request.formData();
+  const intent = formData.get("intent");
+
+  switch (intent) {
+    case "join":
+      return joinGame(params.gameId, formData);
+    case "submit":
+      return submitCard(params.gameId, formData);
+    case "judge":
+      return selectWinner(params.gameId, formData);
+    default:
+      throw new Response("Invalid action", { status: 400 });
+  }
+}
+
+export default function GameRoute() {
+  const { game } = useLoaderData<typeof loader>();
+  const fetcher = useFetcher();
+
+  return (
+    <fetcher.Form method="post">
+      <input type="hidden" name="intent" value="submit" />
+      {/* Game UI */}
+    </fetcher.Form>
+  );
+}
 ```
-POST   /api/ai/generate-response    - Generate AI response
-POST   /api/ai/judge-responses      - AI judges submissions
-POST   /api/ai/generate-card        - Generate new card
+
+### Resource Routes (API-only)
+
+```typescript
+// app/routes/api.ai.generate.tsx
+export async function action({ request }: ActionFunctionArgs) {
+  const { prompt, persona } = await request.json();
+  const response = await generateAIResponse(prompt, persona);
+  return json({ response });
+}
 ```
+
+### Game Management Actions
+
+| Route | Loader (GET) | Action (POST) |
+|-------|--------------|---------------|
+| `/games` | List games | Create game |
+| `/games/:id` | Game state | Join/Leave/Start |
+| `/games/:id/lobby` | Lobby state | Update settings |
+| `/games/:id` | Round state | Submit/Judge |
+
+### AI Resource Routes
+
+| Route | Action |
+|-------|--------|
+| `/api/ai/generate` | Generate AI response |
+| `/api/ai/judge` | AI judges submissions |
+| `/api/ai/card` | Generate new card |
 
 ### Cards & Packs
 
-```
-GET    /api/cards                   - List cards
-GET    /api/packs                   - List card packs
-POST   /api/packs                   - Create custom pack
-```
+| Route | Loader | Action |
+|-------|--------|--------|
+| `/cards` | List cards | - |
+| `/packs` | List packs | Create pack |
+| `/packs/:id` | Pack details | Update pack |
 
 ---
 
-## WebSocket Events
+## Real-time with WebSockets
 
-### Client → Server
+### Remix + Socket.io Setup
+
+Since Remix doesn't have built-in WebSocket support, we'll run Socket.io alongside the Remix server:
+
+```typescript
+// server.ts (custom Express server)
+import { createRequestHandler } from "@remix-run/express";
+import express from "express";
+import { createServer } from "http";
+import { Server } from "socket.io";
+
+const app = express();
+const httpServer = createServer(app);
+const io = new Server(httpServer);
+
+// Socket.io handling
+io.on("connection", (socket) => {
+  socket.on("join-game", ({ gameId, playerId }) => {
+    socket.join(`game:${gameId}`);
+    io.to(`game:${gameId}`).emit("player-joined", { playerId });
+  });
+  // ... more events
+});
+
+// Remix request handler
+app.all("*", createRequestHandler({ build: require("./build") }));
+
+httpServer.listen(3000);
+```
+
+### Client → Server Events
 
 ```typescript
 socket.emit('join-game', { gameId, playerId });
@@ -295,7 +398,7 @@ socket.emit('select-winner', { roundId, submissionId });
 socket.emit('chat-message', { gameId, message });
 ```
 
-### Server → Client
+### Server → Client Events
 
 ```typescript
 socket.on('player-joined', { player });
@@ -304,6 +407,28 @@ socket.on('submission-received', { playerId }); // anonymous until reveal
 socket.on('all-submitted', { submissions }); // reveal phase
 socket.on('winner-selected', { winner, scores });
 socket.on('game-ended', { finalScores, winner });
+```
+
+### React Hook for Socket.io
+
+```typescript
+// app/hooks/useSocket.ts
+import { useEffect, useState } from "react";
+import { io, Socket } from "socket.io-client";
+
+export function useSocket(gameId: string) {
+  const [socket, setSocket] = useState<Socket | null>(null);
+
+  useEffect(() => {
+    const newSocket = io({ path: "/ws" });
+    newSocket.emit("join-game", { gameId });
+    setSocket(newSocket);
+
+    return () => { newSocket.close(); };
+  }, [gameId]);
+
+  return socket;
+}
 ```
 
 ---
@@ -364,13 +489,50 @@ socket.on('game-ended', { finalScores, winner });
 
 ### Recommended First Steps
 
-1. Initialize Next.js project with TypeScript
+1. Initialize Remix v2 project with TypeScript
+   ```bash
+   npx create-remix@latest ai-against-humanity
+   ```
 2. Set up Tailwind CSS and component library
-3. Create card component and basic game board UI
-4. Implement single-player mode against one AI
-5. Add AI response generation with OpenAI/Claude
-6. Build the core game loop
-7. Iterate and expand from there
+   ```bash
+   npm install -D tailwindcss postcss autoprefixer
+   npx tailwindcss init -p
+   ```
+3. Configure database (Prisma + PostgreSQL recommended)
+   ```bash
+   npm install prisma @prisma/client
+   npx prisma init
+   ```
+4. Create card component and basic game board UI
+5. Set up loaders/actions for game state management
+6. Implement single-player mode against one AI
+7. Add AI response generation with OpenAI/Claude
+8. Build the core game loop with Remix forms
+9. Iterate and expand from there
+
+### Project Structure
+
+```
+ai-against-humanity/
+├── app/
+│   ├── components/       # Reusable UI components
+│   │   ├── Card.tsx
+│   │   ├── GameBoard.tsx
+│   │   ├── PlayerList.tsx
+│   │   └── ScoreBoard.tsx
+│   ├── routes/           # Remix routes (pages + API)
+│   ├── services/         # Business logic
+│   │   ├── ai.server.ts  # AI integration
+│   │   ├── game.server.ts
+│   │   └── auth.server.ts
+│   ├── utils/            # Helpers
+│   ├── root.tsx          # App shell
+│   └── entry.*.tsx       # Remix entry points
+├── prisma/
+│   └── schema.prisma     # Database schema
+├── public/               # Static assets
+└── package.json
+```
 
 ---
 
