@@ -6,32 +6,10 @@ function generateInviteCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let code = "";
   for (let i = 0; i < 6; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
+    code += chars[Math.floor(Math.random() * chars.length)];
   }
   return code;
 }
-
-// Query: Get all active games in lobby
-export const listLobbyGames = query({
-  args: {},
-  handler: async (ctx) => {
-    const games = await ctx.db
-      .query("games")
-      .withIndex("by_status", (q) => q.eq("status", "lobby"))
-      .collect();
-
-    return Promise.all(
-      games.map(async (game) => {
-        const players = await ctx.db
-          .query("gamePlayers")
-          .withIndex("by_game", (q) => q.eq("gameId", game._id))
-          .collect();
-        const host = await ctx.db.get(game.hostId);
-        return { ...game, players, host };
-      })
-    );
-  },
-});
 
 // Query: Get game state (real-time!)
 export const getGame = query({
@@ -45,17 +23,6 @@ export const getGame = query({
       .withIndex("by_game", (q) => q.eq("gameId", gameId))
       .collect();
 
-    // Get user info for human players
-    const playersWithInfo = await Promise.all(
-      players.map(async (player) => {
-        if (player.userId) {
-          const user = await ctx.db.get(player.userId);
-          return { ...player, user };
-        }
-        return { ...player, user: null };
-      })
-    );
-
     const currentRound = await ctx.db
       .query("rounds")
       .withIndex("by_game_and_round", (q) =>
@@ -64,39 +31,11 @@ export const getGame = query({
       .first();
 
     let promptCard = null;
-    let submissions: Array<{
-      _id: typeof currentRound extends { _id: infer T } ? T : never;
-      roundId: typeof currentRound extends { _id: infer T } ? T : never;
-      playerId: (typeof players)[0]["_id"];
-      cardId?: (typeof players)[0]["hand"][0];
-      aiGeneratedText?: string;
-      player: (typeof playersWithInfo)[0] | null;
-      card: { text: string } | null;
-    }> = [];
-
     if (currentRound) {
       promptCard = await ctx.db.get(currentRound.promptCardId);
-      const roundSubmissions = await ctx.db
-        .query("submissions")
-        .withIndex("by_round", (q) => q.eq("roundId", currentRound._id))
-        .collect();
-
-      submissions = await Promise.all(
-        roundSubmissions.map(async (sub) => {
-          const player = playersWithInfo.find((p) => p._id === sub.playerId);
-          const card = sub.cardId ? await ctx.db.get(sub.cardId) : null;
-          return { ...sub, player: player ?? null, card };
-        })
-      );
     }
 
-    return {
-      game,
-      players: playersWithInfo,
-      currentRound,
-      promptCard,
-      submissions,
-    };
+    return { game, players, currentRound, promptCard };
   },
 });
 
@@ -104,10 +43,35 @@ export const getGame = query({
 export const getGameByInviteCode = query({
   args: { inviteCode: v.string() },
   handler: async (ctx, { inviteCode }) => {
-    return ctx.db
+    const game = await ctx.db
       .query("games")
       .withIndex("by_invite_code", (q) => q.eq("inviteCode", inviteCode))
       .first();
+    return game;
+  },
+});
+
+// Query: List all games in lobby status
+export const listLobbies = query({
+  args: {},
+  handler: async (ctx) => {
+    const games = await ctx.db
+      .query("games")
+      .withIndex("by_status", (q) => q.eq("status", "lobby"))
+      .collect();
+
+    // Get player counts for each game
+    const gamesWithCounts = await Promise.all(
+      games.map(async (game) => {
+        const players = await ctx.db
+          .query("gamePlayers")
+          .withIndex("by_game", (q) => q.eq("gameId", game._id))
+          .collect();
+        return { ...game, playerCount: players.length };
+      })
+    );
+
+    return gamesWithCounts;
   },
 });
 
@@ -150,22 +114,22 @@ export const joinGame = mutation({
     if (!game) throw new Error("Game not found");
     if (game.status !== "lobby") throw new Error("Game already started");
 
-    // Check if player already joined
+    // Check if already in game
     const existingPlayer = await ctx.db
       .query("gamePlayers")
       .withIndex("by_game", (q) => q.eq("gameId", gameId))
       .filter((q) => q.eq(q.field("userId"), userId))
       .first();
 
-    if (existingPlayer) throw new Error("Already joined this game");
+    if (existingPlayer) throw new Error("Already in this game");
 
     // Check max players
-    const players = await ctx.db
+    const currentPlayers = await ctx.db
       .query("gamePlayers")
       .withIndex("by_game", (q) => q.eq("gameId", gameId))
       .collect();
 
-    if (players.length >= game.maxPlayers) {
+    if (currentPlayers.length >= game.maxPlayers) {
       throw new Error("Game is full");
     }
 
@@ -187,16 +151,6 @@ export const addAiPlayer = mutation({
     const game = await ctx.db.get(gameId);
     if (!game) throw new Error("Game not found");
     if (game.status !== "lobby") throw new Error("Game already started");
-
-    // Check max players
-    const players = await ctx.db
-      .query("gamePlayers")
-      .withIndex("by_game", (q) => q.eq("gameId", gameId))
-      .collect();
-
-    if (players.length >= game.maxPlayers) {
-      throw new Error("Game is full");
-    }
 
     await ctx.db.insert("gamePlayers", {
       gameId,
@@ -222,18 +176,13 @@ export const startGame = mutation({
       .withIndex("by_game", (q) => q.eq("gameId", gameId))
       .collect();
 
-    if (players.length < 2) {
-      throw new Error("Need at least 2 players to start");
-    }
-
-    // Update game status
-    await ctx.db.patch(gameId, {
-      status: "playing",
-      currentRound: 1,
-    });
+    if (players.length < 2) throw new Error("Need at least 2 players");
 
     // Set first player as judge
     await ctx.db.patch(players[0]._id, { isJudge: true });
+
+    // Update game status
+    await ctx.db.patch(gameId, { status: "playing", currentRound: 1 });
 
     // Get a random prompt card
     const promptCards = await ctx.db
@@ -241,10 +190,7 @@ export const startGame = mutation({
       .withIndex("by_type", (q) => q.eq("type", "prompt"))
       .collect();
 
-    if (promptCards.length === 0) {
-      throw new Error("No prompt cards available");
-    }
-
+    if (promptCards.length === 0) throw new Error("No prompt cards available");
     const randomPrompt =
       promptCards[Math.floor(Math.random() * promptCards.length)];
 
@@ -257,22 +203,22 @@ export const startGame = mutation({
       status: "submitting",
     });
 
-    // Deal response cards to each player
+    // Deal cards to non-judge players
     const responseCards = await ctx.db
       .query("cards")
       .withIndex("by_type", (q) => q.eq("type", "response"))
       .collect();
 
+    const shuffled = [...responseCards].sort(() => Math.random() - 0.5);
+    let cardIndex = 0;
+
     for (const player of players) {
       if (!player.isJudge) {
-        // Shuffle and pick 7 cards
-        const shuffled = [...responseCards].sort(() => Math.random() - 0.5);
-        const hand = shuffled.slice(0, 7).map((c) => c._id);
+        const hand = shuffled.slice(cardIndex, cardIndex + 7).map((c) => c._id);
         await ctx.db.patch(player._id, { hand });
+        cardIndex += 7;
       }
     }
-
-    return { roundNumber: 1 };
   },
 });
 
@@ -287,16 +233,16 @@ export const submitCard = mutation({
   handler: async (ctx, args) => {
     const round = await ctx.db.get(args.roundId);
     if (!round) throw new Error("Round not found");
-    if (round.status !== "submitting") throw new Error("Not accepting submissions");
+    if (round.status !== "submitting") throw new Error("Round not accepting submissions");
 
-    // Check if already submitted
-    const existing = await ctx.db
+    // Check for existing submission
+    const existingSubmission = await ctx.db
       .query("submissions")
       .withIndex("by_round", (q) => q.eq("roundId", args.roundId))
       .filter((q) => q.eq(q.field("playerId"), args.playerId))
       .first();
 
-    if (existing) throw new Error("Already submitted");
+    if (existingSubmission) throw new Error("Already submitted");
 
     await ctx.db.insert("submissions", {
       roundId: args.roundId,
@@ -313,14 +259,6 @@ export const submitCard = mutation({
         await ctx.db.patch(args.playerId, { hand: newHand });
       }
     }
-  },
-});
-
-// Mutation: Move to judging phase
-export const startJudging = mutation({
-  args: { roundId: v.id("rounds") },
-  handler: async (ctx, { roundId }) => {
-    await ctx.db.patch(roundId, { status: "judging" });
   },
 });
 
@@ -343,14 +281,18 @@ export const selectWinner = mutation({
       await ctx.db.patch(winnerPlayerId, { score: player.score + 1 });
     }
 
-    // Check if game is won
+    // Check if game is over
     const game = await ctx.db.get(round.gameId);
     if (game && player && player.score + 1 >= game.pointsToWin) {
-      await ctx.db.patch(game._id, { status: "finished" });
-      return { gameFinished: true, winner: player };
+      await ctx.db.patch(round.gameId, { status: "finished" });
+      // Update user stats
+      if (player.userId) {
+        const user = await ctx.db.get(player.userId);
+        if (user) {
+          await ctx.db.patch(player.userId, { gamesWon: user.gamesWon + 1 });
+        }
+      }
     }
-
-    return { gameFinished: false };
   },
 });
 
@@ -362,18 +304,18 @@ export const startNextRound = mutation({
     if (!game) throw new Error("Game not found");
     if (game.status !== "playing") throw new Error("Game not in progress");
 
-    const nextRoundNumber = game.currentRound + 1;
+    const newRoundNumber = game.currentRound + 1;
 
-    // Get all players
+    // Get all players and rotate judge
     const players = await ctx.db
       .query("gamePlayers")
       .withIndex("by_game", (q) => q.eq("gameId", gameId))
       .collect();
 
-    // Rotate judge
     const currentJudgeIndex = players.findIndex((p) => p.isJudge);
     const nextJudgeIndex = (currentJudgeIndex + 1) % players.length;
 
+    // Update judge status
     for (let i = 0; i < players.length; i++) {
       await ctx.db.patch(players[i]._id, { isJudge: i === nextJudgeIndex });
     }
@@ -387,35 +329,16 @@ export const startNextRound = mutation({
     const randomPrompt =
       promptCards[Math.floor(Math.random() * promptCards.length)];
 
+    // Update game round
+    await ctx.db.patch(gameId, { currentRound: newRoundNumber });
+
     // Create new round
     await ctx.db.insert("rounds", {
       gameId,
-      roundNumber: nextRoundNumber,
+      roundNumber: newRoundNumber,
       promptCardId: randomPrompt._id,
       judgePlayerId: players[nextJudgeIndex]._id,
       status: "submitting",
     });
-
-    // Update game round number
-    await ctx.db.patch(gameId, { currentRound: nextRoundNumber });
-
-    // Deal new cards to players who submitted
-    const responseCards = await ctx.db
-      .query("cards")
-      .withIndex("by_type", (q) => q.eq("type", "response"))
-      .collect();
-
-    for (const player of players) {
-      if (player._id !== players[nextJudgeIndex]._id && player.hand.length < 7) {
-        const shuffled = [...responseCards].sort(() => Math.random() - 0.5);
-        const cardsNeeded = 7 - player.hand.length;
-        const newCards = shuffled.slice(0, cardsNeeded).map((c) => c._id);
-        await ctx.db.patch(player._id, {
-          hand: [...player.hand, ...newCards],
-        });
-      }
-    }
-
-    return { roundNumber: nextRoundNumber };
   },
 });

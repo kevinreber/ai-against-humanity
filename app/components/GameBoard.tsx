@@ -1,66 +1,50 @@
 import { useState } from "react";
-import { Card, CardHand, PromptCard } from "./Card";
-import { PlayerList } from "./PlayerList";
+import { Card, AiTypingCard } from "./Card";
+import { cn } from "../lib/utils";
+import { AI_PERSONA_NAMES } from "../lib/constants";
+
+interface Submission {
+  _id: string;
+  playerId: string;
+  text?: string;
+  player?: {
+    isAi: boolean;
+    aiPersonaId?: string;
+    username?: string;
+  };
+}
 
 interface GameBoardProps {
-  gameState: {
-    game: {
-      status: "lobby" | "playing" | "finished";
-      currentRound: number;
-      pointsToWin: number;
-    };
-    players: Array<{
-      _id: string;
-      isAi: boolean;
-      aiPersonaId?: string;
-      score: number;
-      isJudge: boolean;
-      hand: string[];
-      user?: { username: string; avatarUrl?: string } | null;
-    }>;
-    currentRound: {
-      _id: string;
-      status: "submitting" | "judging" | "complete";
-    } | null;
-    promptCard: { text: string } | null;
-    submissions: Array<{
-      _id: string;
-      playerId: string;
-      cardId?: string;
-      aiGeneratedText?: string;
-      card: { text: string } | null;
-      player: {
-        _id: string;
-        isAi: boolean;
-        aiPersonaId?: string;
-        user?: { username: string } | null;
-      } | null;
-    }>;
-  };
-  currentPlayerId: string;
+  promptCard: { text: string } | null;
   playerHand: Array<{ _id: string; text: string }>;
+  submissions: Submission[];
+  roundStatus: "submitting" | "judging" | "complete";
+  isJudge: boolean;
+  hasSubmitted: boolean;
+  aiPlayersThinking: string[];
   onSubmitCard: (cardId: string) => void;
-  onSelectWinner: (submissionId: string, playerId: string) => void;
-  isSubmitting?: boolean;
+  onSelectWinner: (submissionId: string) => void;
+  className?: string;
 }
 
 export function GameBoard({
-  gameState,
-  currentPlayerId,
+  promptCard,
   playerHand,
+  submissions,
+  roundStatus,
+  isJudge,
+  hasSubmitted,
+  aiPlayersThinking,
   onSubmitCard,
   onSelectWinner,
-  isSubmitting = false,
+  className,
 }: GameBoardProps) {
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
-  const [selectedWinnerId, setSelectedWinnerId] = useState<string | null>(null);
 
-  const currentPlayer = gameState.players.find((p) => p._id === currentPlayerId);
-  const isJudge = currentPlayer?.isJudge ?? false;
-  const hasSubmitted = gameState.submissions.some(
-    (s) => s.playerId === currentPlayerId
-  );
-  const roundStatus = gameState.currentRound?.status ?? "submitting";
+  const handleCardClick = (cardId: string) => {
+    if (isJudge || hasSubmitted || roundStatus !== "submitting") return;
+    setSelectedCardId(cardId === selectedCardId ? null : cardId);
+  };
 
   const handleSubmit = () => {
     if (selectedCardId) {
@@ -69,173 +53,190 @@ export function GameBoard({
     }
   };
 
-  const handleSelectWinner = () => {
-    const submission = gameState.submissions.find(
-      (s) => s._id === selectedWinnerId
-    );
-    if (submission) {
-      onSelectWinner(submission._id, submission.playerId);
-      setSelectedWinnerId(null);
-    }
-  };
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900/20 to-gray-900 p-4">
-      <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Sidebar - Player List */}
-        <aside className="lg:col-span-1 order-2 lg:order-1">
-          <PlayerList
-            players={gameState.players}
-            currentPlayerId={currentPlayerId}
-          />
-
-          {/* Game Info */}
-          <div className="mt-4 bg-gray-800/50 rounded-xl p-4 border border-gray-700">
-            <div className="flex justify-between items-center text-gray-300">
-              <span>Round</span>
-              <span className="font-bold text-white">
-                {gameState.game.currentRound}
-              </span>
-            </div>
-            <div className="flex justify-between items-center text-gray-300 mt-2">
-              <span>Points to Win</span>
-              <span className="font-bold text-white">
-                {gameState.game.pointsToWin}
-              </span>
-            </div>
-            <div className="flex justify-between items-center text-gray-300 mt-2">
-              <span>Status</span>
-              <span
-                className={`
-                  font-bold capitalize
-                  ${roundStatus === "submitting" ? "text-cyan-400" : ""}
-                  ${roundStatus === "judging" ? "text-yellow-400" : ""}
-                  ${roundStatus === "complete" ? "text-green-400" : ""}
-                `}
-              >
-                {roundStatus}
-              </span>
-            </div>
+    <div className={cn("space-y-8", className)}>
+      {/* Prompt Card Section */}
+      <div className="text-center">
+        <h2 className="text-sm font-bold uppercase tracking-wider text-gray-400 mb-4">
+          Prompt Card
+        </h2>
+        {promptCard ? (
+          <div className="max-w-md mx-auto">
+            <Card text={promptCard.text} type="prompt" />
           </div>
-        </aside>
+        ) : (
+          <div className="game-card prompt max-w-md mx-auto opacity-50">
+            <p className="text-gray-500">Waiting for prompt...</p>
+          </div>
+        )}
+      </div>
 
-        {/* Main Game Area */}
-        <main className="lg:col-span-3 order-1 lg:order-2 space-y-6">
-          {/* Prompt Card */}
-          {gameState.promptCard && (
-            <section className="mb-8">
-              <h2 className="text-lg font-bold text-white mb-3 text-center">
-                Prompt Card
-              </h2>
-              <PromptCard text={gameState.promptCard.text} large />
-            </section>
-          )}
+      {/* Status Message */}
+      <div className="text-center">
+        <StatusBadge
+          status={roundStatus}
+          isJudge={isJudge}
+          hasSubmitted={hasSubmitted}
+        />
+      </div>
 
-          {/* Submission Phase */}
-          {roundStatus === "submitting" && !isJudge && !hasSubmitted && (
-            <section>
-              <h2 className="text-lg font-bold text-white mb-3">
-                Your Hand - Select a card to play
-              </h2>
-              <CardHand
-                cards={playerHand}
-                selectedId={selectedCardId ?? undefined}
-                onSelect={setSelectedCardId}
-                disabled={isSubmitting}
+      {/* Submissions Section (during judging) */}
+      {roundStatus !== "submitting" && submissions.length > 0 && (
+        <div>
+          <h2 className="text-sm font-bold uppercase tracking-wider text-gray-400 mb-4 text-center">
+            Submissions
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-w-4xl mx-auto">
+            {submissions.map((submission) => (
+              <SubmissionCard
+                key={submission._id}
+                submission={submission}
+                isJudging={roundStatus === "judging" && isJudge}
+                onSelect={() => onSelectWinner(submission._id)}
               />
-              {selectedCardId && (
-                <div className="mt-4 flex justify-center">
-                  <button
-                    onClick={handleSubmit}
-                    disabled={isSubmitting}
-                    className="
-                      bg-gradient-to-r from-cyan-500 to-purple-500
-                      hover:from-cyan-400 hover:to-purple-400
-                      text-white font-bold py-3 px-8 rounded-xl
-                      shadow-lg hover:shadow-cyan-500/25
-                      transition-all duration-200
-                      disabled:opacity-50 disabled:cursor-not-allowed
-                    "
-                  >
-                    {isSubmitting ? "Submitting..." : "Submit Card"}
-                  </button>
-                </div>
-              )}
-            </section>
-          )}
+            ))}
+          </div>
+        </div>
+      )}
 
-          {/* Waiting for submissions */}
-          {roundStatus === "submitting" && (isJudge || hasSubmitted) && (
-            <section className="text-center py-8">
-              <div className="animate-pulse">
-                <div className="text-4xl mb-4">
-                  {isJudge ? "👨‍⚖️" : "⏳"}
-                </div>
-                <h2 className="text-xl font-bold text-white">
-                  {isJudge
-                    ? "You're the judge this round!"
-                    : "Card submitted!"}
-                </h2>
-                <p className="text-gray-400 mt-2">
-                  Waiting for other players to submit...
-                </p>
-                <div className="mt-4 text-gray-500">
-                  {gameState.submissions.length} /{" "}
-                  {gameState.players.filter((p) => !p.isJudge).length} submitted
-                </div>
-              </div>
-            </section>
-          )}
+      {/* AI Thinking Indicators */}
+      {roundStatus === "submitting" && aiPlayersThinking.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 max-w-2xl mx-auto">
+          {aiPlayersThinking.map((personaId) => (
+            <AiTypingCard
+              key={personaId}
+              personaName={AI_PERSONA_NAMES[personaId] || "AI"}
+            />
+          ))}
+        </div>
+      )}
 
-          {/* Judging Phase */}
-          {roundStatus === "judging" && (
-            <section>
-              <h2 className="text-lg font-bold text-white mb-3 text-center">
-                {isJudge ? "Pick the winner!" : "The judge is deciding..."}
-              </h2>
-              <div className="flex flex-wrap gap-4 justify-center">
-                {gameState.submissions.map((submission) => (
+      {/* Player's Hand (if not judge and during submitting) */}
+      {!isJudge && roundStatus === "submitting" && (
+        <div>
+          <h2 className="text-sm font-bold uppercase tracking-wider text-gray-400 mb-4 text-center">
+            Your Hand
+          </h2>
+          {hasSubmitted ? (
+            <p className="text-center text-gray-500">
+              Waiting for other players...
+            </p>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {playerHand.map((card) => (
                   <Card
-                    key={submission._id}
+                    key={card._id}
+                    text={card.text}
                     type="response"
-                    text={submission.card?.text ?? submission.aiGeneratedText ?? ""}
-                    selected={selectedWinnerId === submission._id}
-                    onClick={() => isJudge && setSelectedWinnerId(submission._id)}
-                    disabled={!isJudge}
-                    revealed
+                    selected={card._id === selectedCardId}
+                    onClick={() => handleCardClick(card._id)}
                   />
                 ))}
               </div>
-              {isJudge && selectedWinnerId && (
-                <div className="mt-6 flex justify-center">
-                  <button
-                    onClick={handleSelectWinner}
-                    className="
-                      bg-gradient-to-r from-yellow-500 to-orange-500
-                      hover:from-yellow-400 hover:to-orange-400
-                      text-white font-bold py-3 px-8 rounded-xl
-                      shadow-lg hover:shadow-yellow-500/25
-                      transition-all duration-200
-                    "
-                  >
-                    Select Winner
+              {selectedCardId && (
+                <div className="mt-6 text-center">
+                  <button className="btn-neon-green" onClick={handleSubmit}>
+                    Submit Card
                   </button>
                 </div>
               )}
-            </section>
+            </>
           )}
+        </div>
+      )}
 
-          {/* Round Complete */}
-          {roundStatus === "complete" && (
-            <section className="text-center py-8">
-              <div className="text-6xl mb-4">🎉</div>
-              <h2 className="text-2xl font-bold text-white">Round Complete!</h2>
-              <p className="text-gray-400 mt-2">
-                Preparing next round...
-              </p>
-            </section>
+      {/* Judge waiting message */}
+      {isJudge && roundStatus === "submitting" && (
+        <div className="text-center py-8">
+          <p className="text-xl text-gray-400">
+            You are the judge this round.
+          </p>
+          <p className="text-gray-500 mt-2">
+            Wait for other players to submit their cards...
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StatusBadge({
+  status,
+  isJudge,
+  hasSubmitted,
+}: {
+  status: string;
+  isJudge: boolean;
+  hasSubmitted: boolean;
+}) {
+  let message = "";
+  let colorClass = "";
+
+  switch (status) {
+    case "submitting":
+      if (isJudge) {
+        message = "Waiting for submissions";
+        colorClass = "text-[--color-neon-pink]";
+      } else if (hasSubmitted) {
+        message = "Card submitted!";
+        colorClass = "text-[--color-neon-green]";
+      } else {
+        message = "Select a card to submit";
+        colorClass = "text-[--color-neon-cyan]";
+      }
+      break;
+    case "judging":
+      if (isJudge) {
+        message = "Pick the winner!";
+        colorClass = "text-[--color-neon-pink]";
+      } else {
+        message = "Judge is deciding...";
+        colorClass = "text-[--color-neon-cyan]";
+      }
+      break;
+    case "complete":
+      message = "Round complete!";
+      colorClass = "text-[--color-neon-green]";
+      break;
+  }
+
+  return (
+    <span className={cn("text-sm font-bold uppercase tracking-wider", colorClass)}>
+      {message}
+    </span>
+  );
+}
+
+function SubmissionCard({
+  submission,
+  isJudging,
+  onSelect,
+}: {
+  submission: Submission;
+  isJudging: boolean;
+  onSelect: () => void;
+}) {
+  const playerName = submission.player?.isAi
+    ? AI_PERSONA_NAMES[submission.player.aiPersonaId || ""] || "AI"
+    : submission.player?.username || "Player";
+
+  return (
+    <div className="relative">
+      <Card
+        text={submission.text || "???"}
+        type="response"
+        onClick={isJudging ? onSelect : undefined}
+        className={isJudging ? "cursor-pointer" : ""}
+      />
+      {/* Show player name after judging */}
+      <div className="mt-2 text-center">
+        <span className="text-xs text-gray-500">
+          {submission.player?.isAi && (
+            <span className="text-[--color-neon-purple]">AI: </span>
           )}
-        </main>
+          {playerName}
+        </span>
       </div>
     </div>
   );

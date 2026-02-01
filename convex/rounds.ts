@@ -1,8 +1,8 @@
 import { query, mutation, internalMutation } from "./_generated/server";
-import { v } from "convex/values";
 import { internal } from "./_generated/api";
+import { v } from "convex/values";
 
-// Query: Get round with submissions
+// Query: Get round details
 export const getRound = query({
   args: { roundId: v.id("rounds") },
   handler: async (ctx, { roundId }) => {
@@ -10,33 +10,14 @@ export const getRound = query({
     if (!round) return null;
 
     const promptCard = await ctx.db.get(round.promptCardId);
-    const submissions = await ctx.db
-      .query("submissions")
-      .withIndex("by_round", (q) => q.eq("roundId", roundId))
-      .collect();
+    const judge = await ctx.db.get(round.judgePlayerId);
 
-    const submissionsWithDetails = await Promise.all(
-      submissions.map(async (sub) => {
-        const player = await ctx.db.get(sub.playerId);
-        const card = sub.cardId ? await ctx.db.get(sub.cardId) : null;
-        return {
-          ...sub,
-          player,
-          cardText: card?.text ?? sub.aiGeneratedText ?? "",
-        };
-      })
-    );
-
-    return {
-      round,
-      promptCard,
-      submissions: submissionsWithDetails,
-    };
+    return { round, promptCard, judge };
   },
 });
 
-// Query: Get all submissions for a round (anonymous for judging)
-export const getSubmissionsForJudging = query({
+// Query: Get submissions for a round
+export const getSubmissions = query({
   args: { roundId: v.id("rounds") },
   handler: async (ctx, { roundId }) => {
     const submissions = await ctx.db
@@ -44,171 +25,97 @@ export const getSubmissionsForJudging = query({
       .withIndex("by_round", (q) => q.eq("roundId", roundId))
       .collect();
 
-    // Shuffle submissions for anonymous judging
-    const shuffled = [...submissions].sort(() => Math.random() - 0.5);
-
-    return Promise.all(
-      shuffled.map(async (sub) => {
-        const card = sub.cardId ? await ctx.db.get(sub.cardId) : null;
-        return {
-          _id: sub._id,
-          playerId: sub.playerId,
-          text: card?.text ?? sub.aiGeneratedText ?? "",
-        };
+    // Get card text for each submission
+    const submissionsWithText = await Promise.all(
+      submissions.map(async (sub) => {
+        let text = sub.aiGeneratedText;
+        if (sub.cardId) {
+          const card = await ctx.db.get(sub.cardId);
+          text = card?.text;
+        }
+        const player = await ctx.db.get(sub.playerId);
+        return { ...sub, text, player };
       })
     );
+
+    return submissionsWithText;
   },
 });
 
-// Query: Get round history for a game
-export const getRoundHistory = query({
-  args: { gameId: v.id("games") },
-  handler: async (ctx, { gameId }) => {
-    const rounds = await ctx.db
-      .query("rounds")
-      .withIndex("by_game", (q) => q.eq("gameId", gameId))
-      .filter((q) => q.eq(q.field("status"), "complete"))
+// Query: Check if all submissions are in
+export const areAllSubmissionsIn = query({
+  args: { roundId: v.id("rounds") },
+  handler: async (ctx, { roundId }) => {
+    const round = await ctx.db.get(roundId);
+    if (!round) return false;
+
+    const game = await ctx.db.get(round.gameId);
+    if (!game) return false;
+
+    // Get all non-judge players
+    const players = await ctx.db
+      .query("gamePlayers")
+      .withIndex("by_game", (q) => q.eq("gameId", round.gameId))
+      .filter((q) => q.neq(q.field("_id"), round.judgePlayerId))
       .collect();
 
-    return Promise.all(
-      rounds.map(async (round) => {
-        const promptCard = await ctx.db.get(round.promptCardId);
-        const winner = round.winnerPlayerId
-          ? await ctx.db.get(round.winnerPlayerId)
-          : null;
-        const winningSubmission = round.winnerPlayerId
-          ? await ctx.db
-              .query("submissions")
-              .withIndex("by_round", (q) => q.eq("roundId", round._id))
-              .filter((q) => q.eq(q.field("playerId"), round.winnerPlayerId))
-              .first()
-          : null;
+    const submissions = await ctx.db
+      .query("submissions")
+      .withIndex("by_round", (q) => q.eq("roundId", roundId))
+      .collect();
 
-        let winningText = "";
-        if (winningSubmission) {
-          if (winningSubmission.cardId) {
-            const card = await ctx.db.get(winningSubmission.cardId);
-            winningText = card?.text ?? "";
-          } else {
-            winningText = winningSubmission.aiGeneratedText ?? "";
-          }
-        }
-
-        return {
-          roundNumber: round.roundNumber,
-          promptText: promptCard?.text ?? "",
-          winner,
-          winningText,
-        };
-      })
-    );
+    return submissions.length >= players.length;
   },
 });
 
-// Internal mutation: Auto-timeout for submissions
+// Mutation: Move round to judging phase
+export const moveToJudging = mutation({
+  args: { roundId: v.id("rounds") },
+  handler: async (ctx, { roundId }) => {
+    const round = await ctx.db.get(roundId);
+    if (!round) throw new Error("Round not found");
+    if (round.status !== "submitting") throw new Error("Round not in submitting phase");
+
+    await ctx.db.patch(roundId, { status: "judging" });
+  },
+});
+
+// Internal mutation: Auto-timeout for slow players
 export const autoTimeout = internalMutation({
   args: { roundId: v.id("rounds") },
   handler: async (ctx, { roundId }) => {
     const round = await ctx.db.get(roundId);
     if (!round) return;
 
-    // Only timeout if still in submitting phase
     if (round.status === "submitting") {
+      // Move to judging even if not all submissions are in
       await ctx.db.patch(roundId, { status: "judging" });
     }
   },
 });
 
-// Internal mutation: Auto-judge timeout
-export const autoJudgeTimeout = internalMutation({
-  args: { roundId: v.id("rounds") },
-  handler: async (ctx, { roundId }) => {
-    const round = await ctx.db.get(roundId);
-    if (!round) return;
-
-    // Only timeout if still in judging phase
-    if (round.status === "judging") {
-      // Pick a random winner
-      const submissions = await ctx.db
-        .query("submissions")
-        .withIndex("by_round", (q) => q.eq("roundId", roundId))
-        .collect();
-
-      if (submissions.length > 0) {
-        const randomWinner =
-          submissions[Math.floor(Math.random() * submissions.length)];
-        await ctx.db.patch(roundId, {
-          winnerPlayerId: randomWinner.playerId,
-          status: "complete",
-        });
-
-        // Update player score
-        const player = await ctx.db.get(randomWinner.playerId);
-        if (player) {
-          await ctx.db.patch(randomWinner.playerId, {
-            score: player.score + 1,
-          });
-        }
-      }
-    }
-  },
-});
-
-// Mutation: Start round with timeouts
+// Mutation: Start round with timeout scheduler
 export const startRoundWithTimeout = mutation({
-  args: { gameId: v.id("games"), timeoutSeconds: v.number() },
-  handler: async (ctx, { gameId, timeoutSeconds }) => {
+  args: { gameId: v.id("games"), timeoutMs: v.optional(v.number()) },
+  handler: async (ctx, { gameId, timeoutMs }) => {
     const game = await ctx.db.get(gameId);
     if (!game) throw new Error("Game not found");
 
-    const currentRound = await ctx.db
+    const round = await ctx.db
       .query("rounds")
       .withIndex("by_game_and_round", (q) =>
         q.eq("gameId", gameId).eq("roundNumber", game.currentRound)
       )
       .first();
 
-    if (!currentRound) throw new Error("No current round");
+    if (!round) throw new Error("Round not found");
 
-    // Schedule auto-timeout
-    await ctx.scheduler.runAfter(
-      timeoutSeconds * 1000,
-      internal.rounds.autoTimeout,
-      { roundId: currentRound._id }
-    );
+    // Schedule auto-timeout (default 60 seconds)
+    const timeout = timeoutMs ?? 60000;
+    await ctx.scheduler.runAfter(timeout, internal.rounds.autoTimeout, {
+      roundId: round._id,
+    });
 
-    return currentRound._id;
-  },
-});
-
-// Mutation: Check if all submissions are in
-export const checkAllSubmissions = mutation({
-  args: { roundId: v.id("rounds") },
-  handler: async (ctx, { roundId }) => {
-    const round = await ctx.db.get(roundId);
-    if (!round) return { allIn: false };
-
-    const game = await ctx.db.get(round.gameId);
-    if (!game) return { allIn: false };
-
-    const players = await ctx.db
-      .query("gamePlayers")
-      .withIndex("by_game", (q) => q.eq("gameId", game._id))
-      .collect();
-
-    const nonJudgePlayers = players.filter((p) => !p.isJudge);
-
-    const submissions = await ctx.db
-      .query("submissions")
-      .withIndex("by_round", (q) => q.eq("roundId", roundId))
-      .collect();
-
-    const allIn = submissions.length >= nonJudgePlayers.length;
-
-    if (allIn && round.status === "submitting") {
-      await ctx.db.patch(roundId, { status: "judging" });
-    }
-
-    return { allIn, submissionCount: submissions.length, expectedCount: nonJudgePlayers.length };
+    return round._id;
   },
 });

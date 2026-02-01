@@ -1,117 +1,169 @@
 import { Link } from "react-router";
+import { useMutation } from "convex/react";
+import { api } from "../../convex/_generated/api";
 import type { Route } from "./+types/home";
+import { GAME_MODES, AI_PERSONAS } from "../lib/constants";
+import { useState } from "react";
 
 export function meta({}: Route.MetaArgs) {
   return [
     { title: "AI Against Humanity" },
-    { name: "description", content: "A multiplayer card game where AI models compete to be the funniest" },
+    {
+      name: "description",
+      content:
+        "A multiplayer card game where AI models compete with hilarious responses",
+    },
   ];
 }
 
 export default function Home() {
+  const seedCards = useMutation(api.seed.seedCards);
+  const [seedStatus, setSeedStatus] = useState<string | null>(null);
+
+  const handleSeed = async () => {
+    setSeedStatus("Seeding...");
+    try {
+      const result = await seedCards();
+      setSeedStatus(`${result.message} (${result.created} cards)`);
+    } catch (err) {
+      setSeedStatus(err instanceof Error ? err.message : "Failed to seed");
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900/30 to-gray-900">
+    <div className="min-h-screen">
       {/* Hero Section */}
-      <div className="flex flex-col items-center justify-center min-h-screen px-4 text-center">
-        {/* Logo/Title */}
-        <div className="mb-8">
-          <h1 className="text-6xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-purple-500 to-pink-500 mb-4">
-            AI Against
-            <br />
-            Humanity
-          </h1>
-          <p className="text-xl md:text-2xl text-gray-400 max-w-2xl mx-auto">
-            The party game where AI models compete to be the funniest, most creative, or most absurd.
-          </p>
-        </div>
-
-        {/* Animated Cards Preview */}
-        <div className="relative mb-12 h-32 w-full max-w-lg">
-          <div className="absolute left-1/4 transform -rotate-12 bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl p-4 w-40 h-24 border-2 border-purple-500 shadow-lg shadow-purple-500/20">
-            <span className="text-white font-bold text-sm">
-              The robot uprising was caused by ____
-            </span>
-          </div>
-          <div className="absolute right-1/4 transform rotate-6 bg-white rounded-xl p-4 w-40 h-24 border-2 border-gray-300 shadow-lg">
-            <span className="text-gray-900 font-bold text-sm">
-              Infinite cat videos
-            </span>
-          </div>
-        </div>
-
-        {/* Game Mode Buttons */}
-        <div className="flex flex-col sm:flex-row gap-4 mb-8">
-          <Link
-            to="/games/new"
-            className="
-              bg-gradient-to-r from-cyan-500 to-purple-500
-              hover:from-cyan-400 hover:to-purple-400
-              text-white font-bold py-4 px-8 rounded-xl
-              shadow-lg hover:shadow-cyan-500/25
-              transition-all duration-200 transform hover:scale-105
-              text-lg
-            "
-          >
+      <header className="container mx-auto px-4 pt-20 pb-16 text-center">
+        <h1 className="text-5xl md:text-7xl font-bold mb-4">
+          <span className="neon-text-pink">AI</span>{" "}
+          <span className="text-white">Against</span>{" "}
+          <span className="neon-text-cyan">Humanity</span>
+        </h1>
+        <p className="text-xl text-gray-400 max-w-2xl mx-auto mb-8">
+          The party game where AI models compete to be the funniest. Watch them
+          battle, join the chaos, or judge their hilarious responses.
+        </p>
+        <div className="flex gap-4 justify-center flex-wrap">
+          <Link to="/games/new" className="btn-neon-pink">
             Create Game
           </Link>
-          <Link
-            to="/games/join"
-            className="
-              bg-gray-800 hover:bg-gray-700
-              text-white font-bold py-4 px-8 rounded-xl
-              border-2 border-gray-600 hover:border-cyan-500
-              transition-all duration-200 transform hover:scale-105
-              text-lg
-            "
-          >
+          <Link to="/games" className="btn-neon-cyan">
             Join Game
           </Link>
         </div>
+      </header>
 
-        {/* Quick Links */}
-        <div className="flex gap-6 text-gray-500">
-          <Link to="/games" className="hover:text-cyan-400 transition-colors">
-            Browse Games
-          </Link>
+      {/* Game Modes Section */}
+      <section className="container mx-auto px-4 py-16">
+        <h2 className="text-2xl font-bold text-center mb-8">
+          <span className="neon-text-cyan">Game Modes</span>
+        </h2>
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl mx-auto">
+          {GAME_MODES.map((mode) => (
+            <div
+              key={mode.id}
+              className="game-card response hover:border-[--color-neon-cyan]"
+            >
+              <h3 className="text-lg font-bold text-[--color-neon-cyan] mb-2">
+                {mode.name}
+              </h3>
+              <p className="text-gray-400 text-sm">{mode.description}</p>
+            </div>
+          ))}
         </div>
+      </section>
 
-        {/* Features */}
-        <div className="mt-16 grid grid-cols-1 md:grid-cols-3 gap-8 max-w-4xl">
-          <FeatureCard
-            emoji="🤖"
-            title="AI Opponents"
-            description="Play against unique AI personas with distinct personalities"
-          />
-          <FeatureCard
-            emoji="⚡"
-            title="Real-time"
-            description="Instant updates as players submit and judge cards"
-          />
-          <FeatureCard
-            emoji="🎭"
-            title="Multiple Modes"
-            description="Human vs AI, AI Battle Royale, AI Judge, and more"
-          />
+      {/* AI Personas Section */}
+      <section className="container mx-auto px-4 py-16">
+        <h2 className="text-2xl font-bold text-center mb-8">
+          <span className="neon-text-purple text-[--color-neon-purple]">
+            Meet the AI Players
+          </span>
+        </h2>
+        <div className="grid md:grid-cols-3 lg:grid-cols-5 gap-4 max-w-5xl mx-auto">
+          {AI_PERSONAS.map((persona) => (
+            <div
+              key={persona.id}
+              className="game-card text-center hover:border-[--color-neon-purple]"
+            >
+              <div className="text-4xl mb-2">{persona.emoji}</div>
+              <h3 className="font-bold text-[--color-neon-purple] mb-1">
+                {persona.name}
+              </h3>
+              <p className="text-xs text-gray-500">{persona.description}</p>
+            </div>
+          ))}
         </div>
-      </div>
-    </div>
-  );
-}
+      </section>
 
-function FeatureCard({
-  emoji,
-  title,
-  description,
-}: {
-  emoji: string;
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="bg-gray-800/50 rounded-xl p-6 border border-gray-700 backdrop-blur-sm">
-      <div className="text-4xl mb-3">{emoji}</div>
-      <h3 className="text-lg font-bold text-white mb-2">{title}</h3>
-      <p className="text-gray-400 text-sm">{description}</p>
+      {/* How to Play Section */}
+      <section className="container mx-auto px-4 py-16">
+        <h2 className="text-2xl font-bold text-center mb-8">
+          <span className="neon-text-green text-[--color-neon-green]">
+            How to Play
+          </span>
+        </h2>
+        <div className="grid md:grid-cols-3 gap-8 max-w-4xl mx-auto">
+          <div className="text-center">
+            <div className="w-16 h-16 rounded-full bg-[--color-neon-pink]/20 flex items-center justify-center mx-auto mb-4">
+              <span className="text-2xl font-bold text-[--color-neon-pink]">
+                1
+              </span>
+            </div>
+            <h3 className="font-bold mb-2">Get a Prompt</h3>
+            <p className="text-gray-400 text-sm">
+              Each round starts with a hilarious prompt card that needs a
+              response.
+            </p>
+          </div>
+          <div className="text-center">
+            <div className="w-16 h-16 rounded-full bg-[--color-neon-cyan]/20 flex items-center justify-center mx-auto mb-4">
+              <span className="text-2xl font-bold text-[--color-neon-cyan]">
+                2
+              </span>
+            </div>
+            <h3 className="font-bold mb-2">Submit Responses</h3>
+            <p className="text-gray-400 text-sm">
+              Players and AI compete to submit the funniest response cards.
+            </p>
+          </div>
+          <div className="text-center">
+            <div className="w-16 h-16 rounded-full bg-[--color-neon-green]/20 flex items-center justify-center mx-auto mb-4">
+              <span className="text-2xl font-bold text-[--color-neon-green]">
+                3
+              </span>
+            </div>
+            <h3 className="font-bold mb-2">Judge & Score</h3>
+            <p className="text-gray-400 text-sm">
+              The judge picks the winner. First to reach the target score wins!
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Admin/Dev Section */}
+      <section className="container mx-auto px-4 py-8 border-t border-gray-800">
+        <div className="text-center">
+          <p className="text-xs text-gray-600 mb-2">Development Tools</p>
+          <button
+            onClick={handleSeed}
+            className="text-xs px-4 py-2 border border-gray-700 rounded hover:border-[--color-neon-green] hover:text-[--color-neon-green] transition-colors"
+          >
+            Seed Database
+          </button>
+          {seedStatus && (
+            <p className="text-xs text-gray-500 mt-2">{seedStatus}</p>
+          )}
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="container mx-auto px-4 py-8 text-center text-gray-600">
+        <p>
+          Built with React Router, Convex, and AI{" "}
+          <span className="text-[--color-neon-pink]">♥</span>
+        </p>
+      </footer>
     </div>
   );
 }

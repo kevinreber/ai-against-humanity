@@ -4,7 +4,7 @@ import { v } from "convex/values";
 export default defineSchema({
   // Users
   users: defineTable({
-    clerkId: v.optional(v.string()), // For Clerk auth
+    clerkId: v.optional(v.string()),
     username: v.string(),
     email: v.string(),
     avatarUrl: v.optional(v.string()),
@@ -54,12 +54,12 @@ export default defineSchema({
   // Game Players (humans and AI)
   gamePlayers: defineTable({
     gameId: v.id("games"),
-    userId: v.optional(v.id("users")), // null for AI players
-    aiPersonaId: v.optional(v.string()), // e.g., "chaotic-carl"
+    userId: v.optional(v.id("users")),
+    aiPersonaId: v.optional(v.string()),
     isAi: v.boolean(),
     score: v.number(),
     isJudge: v.boolean(),
-    hand: v.array(v.id("cards")), // Player's current hand
+    hand: v.array(v.id("cards")),
   })
     .index("by_game", ["gameId"])
     .index("by_user", ["userId"]),
@@ -84,7 +84,7 @@ export default defineSchema({
   submissions: defineTable({
     roundId: v.id("rounds"),
     playerId: v.id("gamePlayers"),
-    cardId: v.optional(v.id("cards")), // null if AI-generated
+    cardId: v.optional(v.id("cards")),
     aiGeneratedText: v.optional(v.string()),
   })
     .index("by_round", ["roundId"])

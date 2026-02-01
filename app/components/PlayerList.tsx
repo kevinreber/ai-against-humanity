@@ -1,179 +1,98 @@
+import { cn } from "../lib/utils";
+import { AI_PERSONA_NAMES } from "../lib/constants";
+
 interface Player {
   _id: string;
-  isAi: boolean;
+  userId?: string;
   aiPersonaId?: string;
+  isAi: boolean;
   score: number;
   isJudge: boolean;
-  user?: {
-    username: string;
-    avatarUrl?: string;
-  } | null;
+  username?: string;
 }
 
 interface PlayerListProps {
   players: Player[];
-  currentPlayerId?: string;
-  showScores?: boolean;
+  currentUserId?: string;
+  className?: string;
 }
 
-const AI_PERSONA_NAMES: Record<string, string> = {
-  "chaotic-carl": "Chaotic Carl",
-  "sophisticated-sophie": "Sophisticated Sophie",
-  "edgy-eddie": "Edgy Eddie",
-  "wholesome-wendy": "Wholesome Wendy",
-  "literal-larry": "Literal Larry",
-};
-
-const AI_PERSONA_EMOJIS: Record<string, string> = {
-  "chaotic-carl": "🤪",
-  "sophisticated-sophie": "🎩",
-  "edgy-eddie": "😈",
-  "wholesome-wendy": "🌸",
-  "literal-larry": "🤓",
-};
-
-export function PlayerList({
-  players,
-  currentPlayerId,
-  showScores = true,
-}: PlayerListProps) {
-  // Sort by score descending
-  const sortedPlayers = [...players].sort((a, b) => b.score - a.score);
-
+export function PlayerList({ players, currentUserId, className }: PlayerListProps) {
   return (
-    <div className="bg-gray-800/50 rounded-xl p-4 backdrop-blur-sm border border-gray-700">
-      <h3 className="text-lg font-bold text-white mb-3 flex items-center gap-2">
-        <span>Players</span>
-        <span className="text-sm text-gray-400">({players.length})</span>
+    <div className={cn("space-y-2", className)}>
+      <h3 className="text-sm font-bold uppercase tracking-wider text-gray-400 mb-3">
+        Players
       </h3>
-      <ul className="space-y-2">
-        {sortedPlayers.map((player, index) => {
-          const isCurrentPlayer = player._id === currentPlayerId;
-          const playerName = player.isAi
-            ? AI_PERSONA_NAMES[player.aiPersonaId ?? ""] ?? "AI Player"
-            : player.user?.username ?? "Anonymous";
-          const emoji = player.isAi
-            ? AI_PERSONA_EMOJIS[player.aiPersonaId ?? ""] ?? "🤖"
-            : null;
-
-          return (
-            <li
-              key={player._id}
-              className={`
-                flex items-center justify-between p-2 rounded-lg
-                transition-colors duration-200
-                ${isCurrentPlayer ? "bg-cyan-500/20 border border-cyan-500" : "bg-gray-700/50"}
-                ${player.isJudge ? "ring-2 ring-yellow-400" : ""}
-              `}
-            >
-              <div className="flex items-center gap-2">
-                {/* Rank */}
-                {showScores && (
-                  <span className="text-gray-400 font-mono text-sm w-5">
-                    #{index + 1}
-                  </span>
-                )}
-
-                {/* Avatar/Emoji */}
-                <div
-                  className={`
-                    w-8 h-8 rounded-full flex items-center justify-center
-                    ${player.isAi ? "bg-purple-600" : "bg-cyan-600"}
-                  `}
-                >
-                  {emoji ? (
-                    <span>{emoji}</span>
-                  ) : player.user?.avatarUrl ? (
-                    <img
-                      src={player.user.avatarUrl}
-                      alt={playerName}
-                      className="w-full h-full rounded-full object-cover"
-                    />
-                  ) : (
-                    <span className="text-white text-sm font-bold">
-                      {playerName.charAt(0).toUpperCase()}
-                    </span>
-                  )}
-                </div>
-
-                {/* Name */}
-                <div className="flex flex-col">
-                  <span
-                    className={`
-                      font-medium
-                      ${isCurrentPlayer ? "text-cyan-400" : "text-white"}
-                    `}
-                  >
-                    {playerName}
-                    {isCurrentPlayer && (
-                      <span className="text-xs text-gray-400 ml-1">(you)</span>
-                    )}
-                  </span>
-                  {player.isJudge && (
-                    <span className="text-xs text-yellow-400">Judge</span>
-                  )}
-                </div>
-              </div>
-
-              {/* Score */}
-              {showScores && (
-                <div className="flex items-center gap-1">
-                  <span className="text-2xl font-bold text-white">
-                    {player.score}
-                  </span>
-                  <span className="text-xs text-gray-400">pts</span>
-                </div>
-              )}
-            </li>
-          );
-        })}
-      </ul>
+      <div className="space-y-2">
+        {players.map((player) => (
+          <PlayerItem
+            key={player._id}
+            player={player}
+            isCurrentUser={player.userId === currentUserId}
+          />
+        ))}
+      </div>
     </div>
   );
 }
 
-interface PlayerAvatarProps {
+interface PlayerItemProps {
   player: Player;
-  size?: "sm" | "md" | "lg";
+  isCurrentUser: boolean;
 }
 
-export function PlayerAvatar({ player, size = "md" }: PlayerAvatarProps) {
-  const sizeClasses = {
-    sm: "w-6 h-6 text-xs",
-    md: "w-10 h-10 text-sm",
-    lg: "w-14 h-14 text-lg",
-  };
-
-  const playerName = player.isAi
-    ? AI_PERSONA_NAMES[player.aiPersonaId ?? ""] ?? "AI"
-    : player.user?.username ?? "?";
-
-  const emoji = player.isAi
-    ? AI_PERSONA_EMOJIS[player.aiPersonaId ?? ""] ?? "🤖"
-    : null;
+function PlayerItem({ player, isCurrentUser }: PlayerItemProps) {
+  const displayName = player.isAi
+    ? AI_PERSONA_NAMES[player.aiPersonaId || ""] || "AI Player"
+    : player.username || "Player";
 
   return (
     <div
-      className={`
-        ${sizeClasses[size]}
-        rounded-full flex items-center justify-center font-bold
-        ${player.isAi ? "bg-purple-600" : "bg-cyan-600"}
-      `}
-      title={playerName}
-    >
-      {emoji ? (
-        <span>{emoji}</span>
-      ) : player.user?.avatarUrl ? (
-        <img
-          src={player.user.avatarUrl}
-          alt={playerName}
-          className="w-full h-full rounded-full object-cover"
-        />
-      ) : (
-        <span className="text-white">
-          {playerName.charAt(0).toUpperCase()}
-        </span>
+      className={cn(
+        "flex items-center justify-between p-3 rounded-lg",
+        "bg-[--color-dark-card] border border-gray-800",
+        isCurrentUser && "border-[--color-neon-cyan]",
+        player.isJudge && "border-[--color-neon-pink]"
       )}
+    >
+      <div className="flex items-center gap-3">
+        {/* Avatar */}
+        <div
+          className={cn(
+            "w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold",
+            player.isAi
+              ? "bg-[--color-neon-purple]/20 text-[--color-neon-purple]"
+              : "bg-[--color-neon-cyan]/20 text-[--color-neon-cyan]"
+          )}
+        >
+          {player.isAi ? "AI" : displayName[0]?.toUpperCase()}
+        </div>
+
+        {/* Name and badges */}
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="font-medium">{displayName}</span>
+            {isCurrentUser && (
+              <span className="text-xs px-1.5 py-0.5 rounded bg-[--color-neon-cyan]/20 text-[--color-neon-cyan]">
+                You
+              </span>
+            )}
+            {player.isJudge && (
+              <span className="text-xs px-1.5 py-0.5 rounded bg-[--color-neon-pink]/20 text-[--color-neon-pink]">
+                Judge
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Score */}
+      <div className="text-right">
+        <span className="text-2xl font-bold neon-text-green text-[--color-neon-green]">
+          {player.score}
+        </span>
+        <span className="text-xs text-gray-500 ml-1">pts</span>
+      </div>
     </div>
   );
 }
