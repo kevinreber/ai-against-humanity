@@ -117,26 +117,30 @@ test.describe("Game Flow Integration", () => {
   test("navigation flow between pages", async ({ page }) => {
     // Home -> Games List
     await page.goto("/");
+    await page.waitForLoadState("domcontentloaded");
     const joinGameLink = page.locator('a:has-text("Join Game")');
-    await joinGameLink.waitFor({ state: "visible" });
+    await joinGameLink.waitFor({ state: "visible", timeout: 10000 });
     await joinGameLink.click();
     await expect(page).toHaveURL(/\/games/);
 
     // Games List -> Create Game
-    const createGameLink = page.locator('a:has-text("Create Game")');
-    await createGameLink.waitFor({ state: "visible" });
+    await page.waitForLoadState("domcontentloaded");
+    const createGameLink = page.locator('a:has-text("Create Game")').first();
+    await createGameLink.waitFor({ state: "visible", timeout: 10000 });
     await createGameLink.click();
     await expect(page).toHaveURL(/\/games\/new/);
 
     // Create Game -> Games List (back)
+    await page.waitForLoadState("domcontentloaded");
     const backToGamesLink = page.locator('a:has-text("Back to Games")');
-    await backToGamesLink.waitFor({ state: "visible" });
+    await backToGamesLink.waitFor({ state: "visible", timeout: 10000 });
     await backToGamesLink.click();
     await expect(page).toHaveURL(/\/games/);
 
     // Games List -> Home (back)
+    await page.waitForLoadState("domcontentloaded");
     const backToHomeLink = page.locator('a:has-text("Back to Home")');
-    await backToHomeLink.waitFor({ state: "visible" });
+    await backToHomeLink.waitFor({ state: "visible", timeout: 10000 });
     await backToHomeLink.click();
     await expect(page).toHaveURL("/");
   });
