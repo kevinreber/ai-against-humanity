@@ -80,14 +80,11 @@ body {
 }
 
 /* Button styles */
-.btn-neon {
+.btn-neon-pink {
   @apply px-6 py-3 rounded-lg font-bold uppercase tracking-wider;
   @apply transition-all duration-300 cursor-pointer;
   @apply bg-transparent border-2;
-}
-
-.btn-neon-pink {
-  @apply btn-neon border-[--color-neon-pink] text-[--color-neon-pink];
+  @apply border-[--color-neon-pink] text-[--color-neon-pink];
 }
 
 .btn-neon-pink:hover {
@@ -96,7 +93,10 @@ body {
 }
 
 .btn-neon-cyan {
-  @apply btn-neon border-[--color-neon-cyan] text-[--color-neon-cyan];
+  @apply px-6 py-3 rounded-lg font-bold uppercase tracking-wider;
+  @apply transition-all duration-300 cursor-pointer;
+  @apply bg-transparent border-2;
+  @apply border-[--color-neon-cyan] text-[--color-neon-cyan];
 }
 
 .btn-neon-cyan:hover {
@@ -105,7 +105,10 @@ body {
 }
 
 .btn-neon-green {
-  @apply btn-neon border-[--color-neon-green] text-[--color-neon-green];
+  @apply px-6 py-3 rounded-lg font-bold uppercase tracking-wider;
+  @apply transition-all duration-300 cursor-pointer;
+  @apply bg-transparent border-2;
+  @apply border-[--color-neon-green] text-[--color-neon-green];
 }
 
 .btn-neon-green:hover {

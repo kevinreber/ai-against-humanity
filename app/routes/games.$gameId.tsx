@@ -1,7 +1,7 @@
 import { useParams, Link } from "react-router";
 import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { Id } from "../../convex/_generated/dataModel";
+import type { Id } from "../../convex/_generated/dataModel";
 import { GameBoard } from "../components/GameBoard";
 import { PlayerList } from "../components/PlayerList";
 import { ScoreBoard, GameResults } from "../components/ScoreBoard";
