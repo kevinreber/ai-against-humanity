@@ -1,6 +1,9 @@
 import { Link } from "react-router";
+import { useMutation } from "convex/react";
+import { api } from "../../convex/_generated/api";
 import type { Route } from "./+types/home";
 import { GAME_MODES, AI_PERSONAS } from "../lib/constants";
+import { useState } from "react";
 
 export function meta({}: Route.MetaArgs) {
   return [
@@ -14,6 +17,19 @@ export function meta({}: Route.MetaArgs) {
 }
 
 export default function Home() {
+  const seedCards = useMutation(api.seed.seedCards);
+  const [seedStatus, setSeedStatus] = useState<string | null>(null);
+
+  const handleSeed = async () => {
+    setSeedStatus("Seeding...");
+    try {
+      const result = await seedCards();
+      setSeedStatus(`${result.message} (${result.created} cards)`);
+    } catch (err) {
+      setSeedStatus(err instanceof Error ? err.message : "Failed to seed");
+    }
+  };
+
   return (
     <div className="min-h-screen">
       {/* Hero Section */}
@@ -122,6 +138,22 @@ export default function Home() {
               The judge picks the winner. First to reach the target score wins!
             </p>
           </div>
+        </div>
+      </section>
+
+      {/* Admin/Dev Section */}
+      <section className="container mx-auto px-4 py-8 border-t border-gray-800">
+        <div className="text-center">
+          <p className="text-xs text-gray-600 mb-2">Development Tools</p>
+          <button
+            onClick={handleSeed}
+            className="text-xs px-4 py-2 border border-gray-700 rounded hover:border-[--color-neon-green] hover:text-[--color-neon-green] transition-colors"
+          >
+            Seed Database
+          </button>
+          {seedStatus && (
+            <p className="text-xs text-gray-500 mt-2">{seedStatus}</p>
+          )}
         </div>
       </section>
 
