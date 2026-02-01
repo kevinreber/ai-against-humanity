@@ -1,3 +1,4 @@
+# Runs Playwright E2E tests on push and PR to main
 name: Playwright Tests
 
 on:
