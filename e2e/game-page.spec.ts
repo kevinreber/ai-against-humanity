@@ -37,7 +37,7 @@ test.describe("Game Page - Loading States", () => {
     // Should show some form of error or redirect
     const hasError =
       (await page.locator('text="Game not found"').isVisible()) ||
-      (await page.locator('text="Invalid"').isVisible()) ||
+      (await page.locator('text="Invalid game ID"').isVisible()) ||
       (await page.locator(".ai-typing").isVisible());
 
     expect(hasError).toBeTruthy();
@@ -117,19 +117,27 @@ test.describe("Game Flow Integration", () => {
   test("navigation flow between pages", async ({ page }) => {
     // Home -> Games List
     await page.goto("/");
-    await page.click('a:has-text("Join Game")');
+    const joinGameLink = page.locator('a:has-text("Join Game")');
+    await joinGameLink.waitFor({ state: "visible" });
+    await joinGameLink.click();
     await expect(page).toHaveURL(/\/games/);
 
     // Games List -> Create Game
-    await page.click('a:has-text("Create Game")');
+    const createGameLink = page.locator('a:has-text("Create Game")');
+    await createGameLink.waitFor({ state: "visible" });
+    await createGameLink.click();
     await expect(page).toHaveURL(/\/games\/new/);
 
     // Create Game -> Games List (back)
-    await page.click('a:has-text("Back to Games")');
+    const backToGamesLink = page.locator('a:has-text("Back to Games")');
+    await backToGamesLink.waitFor({ state: "visible" });
+    await backToGamesLink.click();
     await expect(page).toHaveURL(/\/games/);
 
     // Games List -> Home (back)
-    await page.click('a:has-text("Back to Home")');
+    const backToHomeLink = page.locator('a:has-text("Back to Home")');
+    await backToHomeLink.waitFor({ state: "visible" });
+    await backToHomeLink.click();
     await expect(page).toHaveURL("/");
   });
 });
