@@ -123,9 +123,9 @@ test.describe("Game Flow Integration", () => {
     await joinGameLink.click();
     await expect(page).toHaveURL(/\/games/);
 
-    // Games List -> Create Game
+    // Games List -> Create Game (use the header button with btn-neon-pink class)
     await page.waitForLoadState("domcontentloaded");
-    const createGameLink = page.locator('a:has-text("Create Game")').first();
+    const createGameLink = page.locator('a.btn-neon-pink:has-text("Create Game")');
     await createGameLink.waitFor({ state: "visible", timeout: 10000 });
     await createGameLink.click();
     await expect(page).toHaveURL(/\/games\/new/);
