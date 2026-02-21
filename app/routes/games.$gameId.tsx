@@ -1,5 +1,5 @@
 import { useParams, Link } from "react-router";
-import { useQuery, useMutation, useAction } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { GameBoard } from "../components/GameBoard";
@@ -67,9 +67,6 @@ function GamePage() {
   const startNextRound = useMutation(api.games.startNextRound);
   const moveToJudging = useMutation(api.rounds.moveToJudging);
 
-  // AI action
-  const generateAiResponse = useAction(api.ai.generateResponse);
-
   // Get current user from localStorage (simplified auth)
   useEffect(() => {
     const storedUserId = localStorage.getItem("userId");
@@ -93,37 +90,6 @@ function GamePage() {
       }
     }
   }, [gameState?.players, currentUserId]);
-
-  // Auto-trigger AI responses when round starts
-  useEffect(() => {
-    if (
-      gameState?.currentRound?.status === "submitting" &&
-      gameState.promptCard
-    ) {
-      const aiPlayers = gameState.players.filter((p) => p.isAi);
-      const submittedPlayerIds = new Set(submissions?.map((s) => s.playerId) || []);
-
-      // Generate responses for AI players who haven't submitted
-      aiPlayers.forEach(async (aiPlayer) => {
-        if (!submittedPlayerIds.has(aiPlayer._id) && aiPlayer.aiPersonaId) {
-          try {
-            const response = await generateAiResponse({
-              prompt: gameState.promptCard!.text,
-              personaId: aiPlayer.aiPersonaId,
-            });
-
-            await submitCard({
-              roundId: gameState.currentRound!._id,
-              playerId: aiPlayer._id,
-              aiGeneratedText: response,
-            });
-          } catch (err) {
-            console.error("Failed to generate AI response:", err);
-          }
-        }
-      });
-    }
-  }, [gameState?.currentRound?.status, gameState?.promptCard]);
 
   // Auto move to judging when all submissions are in
   useEffect(() => {
