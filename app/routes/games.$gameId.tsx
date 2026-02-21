@@ -5,21 +5,14 @@ import type { Id } from "../../convex/_generated/dataModel";
 import { GameBoard } from "../components/GameBoard";
 import { PlayerList } from "../components/PlayerList";
 import { ScoreBoard, GameResults } from "../components/ScoreBoard";
+import { ErrorBoundary } from "../components/ErrorBoundary";
 import { useState, useEffect } from "react";
 import { cn } from "../lib/utils";
 
-// Validate that a string could be a valid Convex ID
-// Convex IDs are URL-safe base64 strings with specific format:
-// - Start with 'j' or 'k' prefix
-// - Contain underscores
-// - Are 20+ characters long
+// Basic format check for Convex IDs - just ensure it's a non-empty
+// alphanumeric string. Convex handles detailed ID validation server-side.
 function isValidConvexId(id: string): boolean {
-  // Convex IDs have a specific format: prefix + encoded data
-  // They're typically 20-40 characters with underscores
-  // Example: j572s8hhdegmch_am4wde6r2zh2g71gt
-  if (id.length < 20) return false;
-  if (!/^[jk]/.test(id)) return false;
-  if (!id.includes("_")) return false;
+  if (id.length < 2) return false;
   return /^[a-zA-Z0-9_]+$/.test(id);
 }
 
@@ -30,7 +23,24 @@ export function meta() {
   ];
 }
 
-export default function GamePage() {
+export default function GamePageWrapper() {
+  return (
+    <ErrorBoundary
+      fallback={
+        <div className="container mx-auto px-4 py-12 text-center">
+          <p className="text-red-400">Game not found</p>
+          <Link to="/games" className="btn-neon-cyan mt-4 inline-block">
+            Back to Games
+          </Link>
+        </div>
+      }
+    >
+      <GamePage />
+    </ErrorBoundary>
+  );
+}
+
+function GamePage() {
   const { gameId } = useParams();
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
