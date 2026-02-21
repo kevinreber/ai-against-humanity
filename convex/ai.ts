@@ -1,8 +1,18 @@
-import { action, internalAction } from "./_generated/server";
+import {
+  action,
+  internalAction,
+  internalMutation,
+  internalQuery,
+} from "./_generated/server";
+import { internal } from "./_generated/api";
 import { v } from "convex/values";
-import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
+import { Redis } from "@upstash/redis";
+import { Ratelimit } from "@upstash/ratelimit";
 
+// ---------------------------------------------------------------------------
 // AI Persona definitions
+// ---------------------------------------------------------------------------
 export const AI_PERSONAS: Record<
   string,
   {
@@ -38,42 +48,287 @@ export const AI_PERSONAS: Record<
   },
 };
 
-// Action: Generate AI response for a prompt
-export const generateResponse = action({
-  args: {
-    prompt: v.string(),
-    personaId: v.string(),
-  },
-  handler: async (ctx, { prompt, personaId }) => {
-    const persona = AI_PERSONAS[personaId];
-    if (!persona) {
-      throw new Error(`Unknown persona: ${personaId}`);
-    }
+const MAX_AI_PLAYERS_PER_GAME = 3;
+const MAX_CACHED_RESPONSES_PER_PROMPT = 5;
 
-    const anthropic = new Anthropic();
+// ---------------------------------------------------------------------------
+// Rate limiting (inline — avoids cross-module action calls)
+// ---------------------------------------------------------------------------
+function getRateLimiter() {
+  const url = process.env.UPSTASH_REDIS_URL;
+  const token = process.env.UPSTASH_REDIS_TOKEN;
+  if (!url || !token) return null;
 
-    const response = await anthropic.messages.create({
-      model: "claude-3-haiku-20240307",
-      max_tokens: 100,
-      temperature: persona.temperature,
-      system: persona.systemPrompt,
-      messages: [
-        {
-          role: "user",
-          content: `The prompt card says: "${prompt}"\n\nWhat is your response card?`,
-        },
-      ],
-    });
+  const redis = new Redis({ url, token });
+  return {
+    perMinute: new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(10, "1 m"), // 10 AI calls/min per game
+      prefix: "rl:ai:min",
+    }),
+    perDay: new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(100, "1 d"), // 100 AI calls/day per game
+      prefix: "rl:ai:day",
+    }),
+  };
+}
 
-    if (response.content[0].type === "text") {
-      return response.content[0].text.trim();
-    }
+async function isRateLimited(gameId: string): Promise<boolean> {
+  const limiters = getRateLimiter();
+  if (!limiters) return false; // Allow if Redis not configured
 
-    return "I have nothing to say.";
+  const [minResult, dayResult] = await Promise.all([
+    limiters.perMinute.limit(`game:${gameId}`),
+    limiters.perDay.limit(`game:${gameId}`),
+  ]);
+
+  return !minResult.success || !dayResult.success;
+}
+
+// ---------------------------------------------------------------------------
+// OpenAI helper
+// ---------------------------------------------------------------------------
+async function callOpenAI(
+  prompt: string,
+  persona: { systemPrompt: string; temperature: number }
+): Promise<string> {
+  const openai = new OpenAI();
+
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    max_tokens: 50,
+    temperature: persona.temperature,
+    messages: [
+      { role: "system", content: persona.systemPrompt },
+      {
+        role: "user",
+        content: `The prompt card says: "${prompt}"\n\nWhat is your response card?`,
+      },
+    ],
+  });
+
+  return (
+    response.choices[0]?.message?.content?.trim() || "I have nothing to say."
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Internal queries & mutations (used by server-side AI generation)
+// ---------------------------------------------------------------------------
+
+// Get round info needed for AI generation
+export const getRoundInfo = internalQuery({
+  args: { roundId: v.id("rounds"), gameId: v.id("games") },
+  handler: async (ctx, { roundId, gameId }) => {
+    const round = await ctx.db.get(roundId);
+    if (!round) return null;
+
+    const promptCard = await ctx.db.get(round.promptCardId);
+
+    const players = await ctx.db
+      .query("gamePlayers")
+      .withIndex("by_game", (q) => q.eq("gameId", gameId))
+      .collect();
+
+    const submissions = await ctx.db
+      .query("submissions")
+      .withIndex("by_round", (q) => q.eq("roundId", roundId))
+      .collect();
+
+    return { round, promptCard, players, submissions };
   },
 });
 
-// Action: AI judges submissions and picks a winner
+// Check cache for an existing response pool
+export const getCachedResponse = internalQuery({
+  args: { promptText: v.string(), personaId: v.string() },
+  handler: async (ctx, { promptText, personaId }) => {
+    return ctx.db
+      .query("aiResponseCache")
+      .withIndex("by_prompt_persona", (q) =>
+        q.eq("promptText", promptText).eq("personaId", personaId)
+      )
+      .first();
+  },
+});
+
+// Save a new response to the cache pool
+export const saveToCache = internalMutation({
+  args: {
+    promptText: v.string(),
+    personaId: v.string(),
+    response: v.string(),
+  },
+  handler: async (ctx, { promptText, personaId, response }) => {
+    const existing = await ctx.db
+      .query("aiResponseCache")
+      .withIndex("by_prompt_persona", (q) =>
+        q.eq("promptText", promptText).eq("personaId", personaId)
+      )
+      .first();
+
+    if (existing) {
+      if (
+        !existing.responses.includes(response) &&
+        existing.responses.length < MAX_CACHED_RESPONSES_PER_PROMPT
+      ) {
+        await ctx.db.patch(existing._id, {
+          responses: [...existing.responses, response],
+        });
+      }
+    } else {
+      await ctx.db.insert("aiResponseCache", {
+        promptText,
+        personaId,
+        responses: [response],
+      });
+    }
+  },
+});
+
+// Submit an AI-generated card (server-side, with deduplication)
+export const submitAiCard = internalMutation({
+  args: {
+    roundId: v.id("rounds"),
+    playerId: v.id("gamePlayers"),
+    aiGeneratedText: v.string(),
+  },
+  handler: async (ctx, { roundId, playerId, aiGeneratedText }) => {
+    const round = await ctx.db.get(roundId);
+    if (!round || round.status !== "submitting") return;
+
+    // Deduplicate: skip if this player already submitted
+    const existing = await ctx.db
+      .query("submissions")
+      .withIndex("by_round", (q) => q.eq("roundId", roundId))
+      .filter((q) => q.eq(q.field("playerId"), playerId))
+      .first();
+    if (existing) return;
+
+    await ctx.db.insert("submissions", {
+      roundId,
+      playerId,
+      aiGeneratedText,
+    });
+  },
+});
+
+// Check if all submissions are in and move to judging if so
+export const checkAndMoveToJudging = internalMutation({
+  args: { roundId: v.id("rounds"), gameId: v.id("games") },
+  handler: async (ctx, { roundId, gameId }) => {
+    const round = await ctx.db.get(roundId);
+    if (!round || round.status !== "submitting") return;
+
+    const players = await ctx.db
+      .query("gamePlayers")
+      .withIndex("by_game", (q) => q.eq("gameId", gameId))
+      .collect();
+
+    const nonJudgePlayers = players.filter(
+      (p) => p._id !== round.judgePlayerId
+    );
+
+    const submissions = await ctx.db
+      .query("submissions")
+      .withIndex("by_round", (q) => q.eq("roundId", roundId))
+      .collect();
+
+    if (submissions.length >= nonJudgePlayers.length) {
+      await ctx.db.patch(roundId, { status: "judging" });
+    }
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Main server-side AI generation (scheduled from mutations, not client)
+// ---------------------------------------------------------------------------
+export const generateAiSubmissions = internalAction({
+  args: { gameId: v.id("games"), roundId: v.id("rounds") },
+  handler: async (ctx, { gameId, roundId }) => {
+    const roundInfo = await ctx.runQuery(internal.ai.getRoundInfo, {
+      roundId,
+      gameId,
+    });
+    if (!roundInfo || roundInfo.round.status !== "submitting") return;
+
+    const { round, promptCard, players, submissions } = roundInfo;
+    if (!promptCard) return;
+
+    const submittedPlayerIds = new Set(
+      submissions.map((s: { playerId: string }) => s.playerId)
+    );
+
+    // AI players who need to submit (not judge, not already submitted)
+    const aiPlayersToSubmit = players.filter(
+      (p) =>
+        p.isAi &&
+        p._id !== round.judgePlayerId &&
+        !submittedPlayerIds.has(p._id)
+    );
+
+    for (const aiPlayer of aiPlayersToSubmit) {
+      if (!aiPlayer.aiPersonaId) continue;
+
+      const persona = AI_PERSONAS[aiPlayer.aiPersonaId];
+      if (!persona) continue;
+
+      let responseText: string;
+
+      // 1) Check cache first — free, no API call
+      const cached = await ctx.runQuery(internal.ai.getCachedResponse, {
+        promptText: promptCard.text,
+        personaId: aiPlayer.aiPersonaId,
+      });
+
+      if (cached && cached.responses.length > 0) {
+        responseText =
+          cached.responses[
+            Math.floor(Math.random() * cached.responses.length)
+          ];
+      } else {
+        // 2) Check rate limit before calling the API
+        const limited = await isRateLimited(gameId);
+        if (limited) {
+          responseText = "I'm thinking too hard... my brain hurts.";
+        } else {
+          // 3) Call OpenAI
+          try {
+            responseText = await callOpenAI(promptCard.text, persona);
+          } catch (err) {
+            console.error("OpenAI API error:", err);
+            responseText = "My circuits are fried right now.";
+          }
+        }
+
+        // 4) Cache the response for future games
+        await ctx.runMutation(internal.ai.saveToCache, {
+          promptText: promptCard.text,
+          personaId: aiPlayer.aiPersonaId,
+          response: responseText,
+        });
+      }
+
+      // 5) Submit (with deduplication built in)
+      await ctx.runMutation(internal.ai.submitAiCard, {
+        roundId,
+        playerId: aiPlayer._id,
+        aiGeneratedText: responseText,
+      });
+    }
+
+    // After all AI submissions, check if round should move to judging
+    await ctx.runMutation(internal.ai.checkAndMoveToJudging, {
+      roundId,
+      gameId,
+    });
+  },
+});
+
+// ---------------------------------------------------------------------------
+// AI judging (switched to OpenAI)
+// ---------------------------------------------------------------------------
 export const judgeSubmissions = action({
   args: {
     promptText: v.string(),
@@ -86,9 +341,8 @@ export const judgeSubmissions = action({
     judgePersonaId: v.optional(v.string()),
   },
   handler: async (ctx, { promptText, submissions, judgePersonaId }) => {
-    const anthropic = new Anthropic();
+    const openai = new OpenAI();
 
-    // Build the submission list
     const submissionList = submissions
       .map((s, i) => `${i + 1}. "${s.text}"`)
       .join("\n");
@@ -98,12 +352,15 @@ export const judgeSubmissions = action({
         "You are a fair and funny judge."
       : "You are a fair and funny judge who appreciates creativity and humor.";
 
-    const response = await anthropic.messages.create({
-      model: "claude-3-haiku-20240307",
-      max_tokens: 200,
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      max_tokens: 150,
       temperature: 0.7,
-      system: `${systemPrompt}\n\nYou are now judging a Cards Against Humanity round. Pick the funniest answer and explain briefly why it's the best.`,
       messages: [
+        {
+          role: "system",
+          content: `${systemPrompt}\n\nYou are now judging a Cards Against Humanity round. Pick the funniest answer and explain briefly why it's the best.`,
+        },
         {
           role: "user",
           content: `The prompt card says: "${promptText}"\n\nThe submissions are:\n${submissionList}\n\nWhich number wins? Reply with just the number first, then a brief explanation.`,
@@ -111,9 +368,8 @@ export const judgeSubmissions = action({
       ],
     });
 
-    if (response.content[0].type === "text") {
-      const text = response.content[0].text.trim();
-      // Extract the winning number from the response
+    const text = response.choices[0]?.message?.content?.trim();
+    if (text) {
       const match = text.match(/^(\d+)/);
       if (match) {
         const winnerIndex = parseInt(match[1], 10) - 1;
@@ -126,7 +382,7 @@ export const judgeSubmissions = action({
       }
     }
 
-    // Fallback: pick first submission
+    // Fallback
     return {
       winnerId: submissions[0].id,
       explanation: "I couldn't decide, so I picked the first one!",
@@ -134,46 +390,9 @@ export const judgeSubmissions = action({
   },
 });
 
-// Action: Generate multiple AI responses for variety
-export const generateMultipleResponses = action({
-  args: {
-    prompt: v.string(),
-    personaId: v.string(),
-    count: v.number(),
-  },
-  handler: async (ctx, { prompt, personaId, count }) => {
-    const persona = AI_PERSONAS[personaId];
-    if (!persona) {
-      throw new Error(`Unknown persona: ${personaId}`);
-    }
-
-    const anthropic = new Anthropic();
-    const responses: string[] = [];
-
-    for (let i = 0; i < count; i++) {
-      const response = await anthropic.messages.create({
-        model: "claude-3-haiku-20240307",
-        max_tokens: 100,
-        temperature: Math.min(1.0, persona.temperature + i * 0.1),
-        system: persona.systemPrompt,
-        messages: [
-          {
-            role: "user",
-            content: `The prompt card says: "${prompt}"\n\nWhat is your response card? Give a unique answer different from: ${responses.join(", ") || "nothing yet"}.`,
-          },
-        ],
-      });
-
-      if (response.content[0].type === "text") {
-        responses.push(response.content[0].text.trim());
-      }
-    }
-
-    return responses;
-  },
-});
-
-// Export persona list for UI
+// ---------------------------------------------------------------------------
+// Public helpers
+// ---------------------------------------------------------------------------
 export const getPersonas = action({
   args: {},
   handler: async () => {
@@ -183,3 +402,5 @@ export const getPersonas = action({
     }));
   },
 });
+
+export { MAX_AI_PLAYERS_PER_GAME };

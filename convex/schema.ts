@@ -89,4 +89,11 @@ export default defineSchema({
   })
     .index("by_round", ["roundId"])
     .index("by_player", ["playerId"]),
+
+  // AI Response Cache - stores pools of responses per prompt+persona to avoid repeated API calls
+  aiResponseCache: defineTable({
+    promptText: v.string(),
+    personaId: v.string(),
+    responses: v.array(v.string()),
+  }).index("by_prompt_persona", ["promptText", "personaId"]),
 });

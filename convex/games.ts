@@ -1,5 +1,7 @@
 import { query, mutation } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { v } from "convex/values";
+import { MAX_AI_PLAYERS_PER_GAME } from "./ai";
 
 // Generate a random 6-character invite code
 function generateInviteCode(): string {
@@ -144,13 +146,26 @@ export const joinGame = mutation({
   },
 });
 
-// Mutation: Add AI player to game
+// Mutation: Add AI player to game (capped to limit API costs)
 export const addAiPlayer = mutation({
   args: { gameId: v.id("games"), aiPersonaId: v.string() },
   handler: async (ctx, { gameId, aiPersonaId }) => {
     const game = await ctx.db.get(gameId);
     if (!game) throw new Error("Game not found");
     if (game.status !== "lobby") throw new Error("Game already started");
+
+    // Enforce AI player cap to control API costs
+    const existingPlayers = await ctx.db
+      .query("gamePlayers")
+      .withIndex("by_game", (q) => q.eq("gameId", gameId))
+      .collect();
+
+    const aiPlayerCount = existingPlayers.filter((p) => p.isAi).length;
+    if (aiPlayerCount >= MAX_AI_PLAYERS_PER_GAME) {
+      throw new Error(
+        `Maximum of ${MAX_AI_PLAYERS_PER_GAME} AI players per game`
+      );
+    }
 
     await ctx.db.insert("gamePlayers", {
       gameId,
@@ -195,12 +210,18 @@ export const startGame = mutation({
       promptCards[Math.floor(Math.random() * promptCards.length)];
 
     // Create first round
-    await ctx.db.insert("rounds", {
+    const roundId = await ctx.db.insert("rounds", {
       gameId,
       roundNumber: 1,
       promptCardId: randomPrompt._id,
       judgePlayerId: players[0]._id,
       status: "submitting",
+    });
+
+    // Schedule server-side AI response generation
+    await ctx.scheduler.runAfter(0, internal.ai.generateAiSubmissions, {
+      gameId,
+      roundId,
     });
 
     // Deal cards to non-judge players
@@ -333,12 +354,18 @@ export const startNextRound = mutation({
     await ctx.db.patch(gameId, { currentRound: newRoundNumber });
 
     // Create new round
-    await ctx.db.insert("rounds", {
+    const roundId = await ctx.db.insert("rounds", {
       gameId,
       roundNumber: newRoundNumber,
       promptCardId: randomPrompt._id,
       judgePlayerId: players[nextJudgeIndex]._id,
       status: "submitting",
+    });
+
+    // Schedule server-side AI response generation
+    await ctx.scheduler.runAfter(0, internal.ai.generateAiSubmissions, {
+      gameId,
+      roundId,
     });
   },
 });
