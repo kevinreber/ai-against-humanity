@@ -88,7 +88,8 @@ body {
 }
 
 .btn-neon-pink:hover {
-  @apply bg-[--color-neon-pink] text-black;
+  @apply text-white;
+  background-color: rgba(255, 0, 255, 0.3);
   box-shadow: 0 0 20px var(--color-neon-pink);
 }
 
@@ -100,7 +101,8 @@ body {
 }
 
 .btn-neon-cyan:hover {
-  @apply bg-[--color-neon-cyan] text-black;
+  @apply text-white;
+  background-color: rgba(0, 255, 255, 0.3);
   box-shadow: 0 0 20px var(--color-neon-cyan);
 }
 
@@ -112,7 +114,8 @@ body {
 }
 
 .btn-neon-green:hover {
-  @apply bg-[--color-neon-green] text-black;
+  @apply text-white;
+  background-color: rgba(57, 255, 20, 0.3);
   box-shadow: 0 0 20px var(--color-neon-green);
 }
 
