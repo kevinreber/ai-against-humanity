@@ -1,7 +1,7 @@
 import { query, mutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
-import { MAX_AI_PLAYERS_PER_GAME } from "./ai";
+import { MAX_AI_PLAYERS_PER_GAME, MAX_AI_PLAYERS_WITH_OWN_KEY } from "./ai";
 
 // Generate a random 6-character invite code
 function generateInviteCode(): string {
@@ -154,6 +154,18 @@ export const addAiPlayer = mutation({
     if (!game) throw new Error("Game not found");
     if (game.status !== "lobby") throw new Error("Game already started");
 
+    // Check if host has their own API key — allows higher AI player cap
+    const hostApiKey = await ctx.db
+      .query("userApiKeys")
+      .withIndex("by_user_and_provider", (q) =>
+        q.eq("userId", game.hostId).eq("provider", "openai")
+      )
+      .first();
+
+    const maxAi = hostApiKey?.isValid
+      ? MAX_AI_PLAYERS_WITH_OWN_KEY
+      : MAX_AI_PLAYERS_PER_GAME;
+
     // Enforce AI player cap to control API costs
     const existingPlayers = await ctx.db
       .query("gamePlayers")
@@ -161,10 +173,8 @@ export const addAiPlayer = mutation({
       .collect();
 
     const aiPlayerCount = existingPlayers.filter((p) => p.isAi).length;
-    if (aiPlayerCount >= MAX_AI_PLAYERS_PER_GAME) {
-      throw new Error(
-        `Maximum of ${MAX_AI_PLAYERS_PER_GAME} AI players per game`
-      );
+    if (aiPlayerCount >= maxAi) {
+      throw new Error(`Maximum of ${maxAi} AI players per game`);
     }
 
     await ctx.db.insert("gamePlayers", {

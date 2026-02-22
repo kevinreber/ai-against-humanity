@@ -50,6 +50,12 @@ export default function Home() {
           <Link to="/games" className="btn-neon-cyan">
             Join Game
           </Link>
+          <Link
+            to="/settings"
+            className="px-6 py-3 rounded-lg font-bold uppercase tracking-wider transition-all duration-300 cursor-pointer bg-transparent border-2 border-gray-600 text-gray-400 hover:border-[--color-neon-green] hover:text-[--color-neon-green]"
+          >
+            Settings
+          </Link>
         </div>
       </header>
 
@@ -94,6 +100,16 @@ export default function Home() {
             </div>
           ))}
         </div>
+        <p className="text-center text-sm text-gray-500 mt-6">
+          ...or{" "}
+          <Link
+            to="/settings"
+            className="text-[--color-neon-purple] hover:underline"
+          >
+            create your own AI personality
+          </Link>{" "}
+          with custom humor styles!
+        </p>
       </section>
 
       {/* How to Play Section */}

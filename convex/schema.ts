@@ -96,4 +96,29 @@ export default defineSchema({
     personaId: v.string(),
     responses: v.array(v.string()),
   }).index("by_prompt_persona", ["promptText", "personaId"]),
+
+  // User API Keys - encrypted storage for user-provided API credentials
+  userApiKeys: defineTable({
+    userId: v.id("users"),
+    provider: v.union(v.literal("openai"), v.literal("anthropic")),
+    encryptedKey: v.string(),
+    keyHint: v.string(), // last 4 chars for display, e.g. "...7xQ2"
+    isValid: v.boolean(),
+    createdAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_and_provider", ["userId", "provider"]),
+
+  // Custom AI Personas - user-created AI personalities
+  customPersonas: defineTable({
+    creatorId: v.id("users"),
+    name: v.string(),
+    personality: v.string(), // short description
+    systemPrompt: v.string(),
+    temperature: v.number(),
+    emoji: v.string(),
+    isPublic: v.boolean(),
+  })
+    .index("by_creator", ["creatorId"])
+    .index("by_public", ["isPublic"]),
 });

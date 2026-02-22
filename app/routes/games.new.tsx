@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import type { Id } from "../../convex/_generated/dataModel";
 import { GAME_MODES, AI_PERSONAS, DEFAULT_GAME_SETTINGS } from "../lib/constants";
 import { cn } from "../lib/utils";
 
@@ -18,12 +19,54 @@ export default function NewGame() {
   const addAiPlayer = useMutation(api.games.addAiPlayer);
   const createGuestUser = useMutation(api.users.createGuestUser);
 
+  const [userId, setUserId] = useState<string | null>(null);
   const [username, setUsername] = useState("");
   const [gameMode, setGameMode] = useState(GAME_MODES[1].id); // Default to Human vs AI
   const [pointsToWin, setPointsToWin] = useState(DEFAULT_GAME_SETTINGS.pointsToWin);
   const [selectedAi, setSelectedAi] = useState<string[]>(["chaotic-carl"]);
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    const stored = localStorage.getItem("userId");
+    if (stored) setUserId(stored);
+  }, []);
+
+  // Load custom personas (public + user's own)
+  const publicPersonas = useQuery(api.customPersonas.getPublicPersonas);
+  const myPersonas = useQuery(
+    api.customPersonas.getMyPersonas,
+    userId ? { userId: userId as Id<"users"> } : "skip"
+  );
+
+  // Merge custom personas, deduplicating (user's own might already be public)
+  const customPersonas = (() => {
+    const seen = new Set<string>();
+    const result: Array<{
+      id: string;
+      name: string;
+      description: string;
+      emoji: string;
+      isCustom: true;
+    }> = [];
+
+    for (const list of [myPersonas, publicPersonas]) {
+      if (!list) continue;
+      for (const p of list) {
+        if (!seen.has(p._id)) {
+          seen.add(p._id);
+          result.push({
+            id: p._id,
+            name: p.name,
+            description: p.personality,
+            emoji: p.emoji,
+            isCustom: true,
+          });
+        }
+      }
+    }
+    return result;
+  })();
 
   const handleAiToggle = (personaId: string) => {
     setSelectedAi((prev) =>
@@ -49,11 +92,11 @@ export default function NewGame() {
 
     try {
       // Create guest user
-      const userId = await createGuestUser({ username: username.trim() });
+      const newUserId = await createGuestUser({ username: username.trim() });
 
       // Create the game
       const { gameId } = await createGame({
-        hostId: userId,
+        hostId: newUserId,
         gameMode,
         maxPlayers: selectedAi.length + 4, // AI players + room for humans
         pointsToWin,
@@ -130,7 +173,7 @@ export default function NewGame() {
           </div>
         </div>
 
-        {/* AI Opponents */}
+        {/* AI Opponents — Built-in */}
         <div className="game-card">
           <label className="block text-sm font-bold uppercase tracking-wider text-gray-400 mb-4">
             AI Opponents
@@ -153,9 +196,49 @@ export default function NewGame() {
               </button>
             ))}
           </div>
-          <p className="text-xs text-gray-500 mt-2">
-            Selected: {selectedAi.length} AI player(s)
-          </p>
+
+          {/* Custom Personas */}
+          {customPersonas.length > 0 && (
+            <>
+              <div className="border-t border-gray-800 my-4" />
+              <label className="block text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">
+                Custom Personas
+              </label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {customPersonas.map((persona) => (
+                  <button
+                    key={persona.id}
+                    type="button"
+                    onClick={() => handleAiToggle(persona.id)}
+                    className={cn(
+                      "p-3 rounded-lg border-2 text-center transition-all",
+                      selectedAi.includes(persona.id)
+                        ? "border-[--color-neon-purple] bg-[--color-neon-purple]/10"
+                        : "border-gray-700 hover:border-gray-600"
+                    )}
+                  >
+                    <div className="text-2xl mb-1">{persona.emoji}</div>
+                    <div className="font-bold text-xs">{persona.name}</div>
+                    <div className="text-[10px] text-gray-600 mt-0.5">
+                      {persona.description}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
+          <div className="flex items-center justify-between mt-3">
+            <p className="text-xs text-gray-500">
+              Selected: {selectedAi.length} AI player(s)
+            </p>
+            <Link
+              to="/settings"
+              className="text-xs text-[--color-neon-purple] hover:underline"
+            >
+              + Create custom persona
+            </Link>
+          </div>
         </div>
 
         {/* Points to Win */}

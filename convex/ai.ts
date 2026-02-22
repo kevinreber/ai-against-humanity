@@ -9,9 +9,10 @@ import { v } from "convex/values";
 import OpenAI from "openai";
 import { Redis } from "@upstash/redis";
 import { Ratelimit } from "@upstash/ratelimit";
+import { decryptApiKey } from "./apiKeys";
 
 // ---------------------------------------------------------------------------
-// AI Persona definitions
+// AI Persona definitions (built-in)
 // ---------------------------------------------------------------------------
 export const AI_PERSONAS: Record<
   string,
@@ -49,6 +50,7 @@ export const AI_PERSONAS: Record<
 };
 
 const MAX_AI_PLAYERS_PER_GAME = 3;
+const MAX_AI_PLAYERS_WITH_OWN_KEY = 5;
 const MAX_CACHED_RESPONSES_PER_PROMPT = 5;
 
 // ---------------------------------------------------------------------------
@@ -87,13 +89,14 @@ async function isRateLimited(gameId: string): Promise<boolean> {
 }
 
 // ---------------------------------------------------------------------------
-// OpenAI helper
+// OpenAI helper — supports user-provided keys
 // ---------------------------------------------------------------------------
 async function callOpenAI(
   prompt: string,
-  persona: { systemPrompt: string; temperature: number }
+  persona: { systemPrompt: string; temperature: number },
+  userApiKey?: string
 ): Promise<string> {
-  const openai = new OpenAI();
+  const openai = userApiKey ? new OpenAI({ apiKey: userApiKey }) : new OpenAI();
 
   const response = await openai.chat.completions.create({
     model: "gpt-4o-mini",
@@ -136,7 +139,31 @@ export const getRoundInfo = internalQuery({
       .withIndex("by_round", (q) => q.eq("roundId", roundId))
       .collect();
 
-    return { round, promptCard, players, submissions };
+    // Get the game to find the host (for API key lookup)
+    const game = await ctx.db.get(gameId);
+
+    return { round, promptCard, players, submissions, hostId: game?.hostId };
+  },
+});
+
+// Look up a custom persona from the DB
+export const getCustomPersona = internalQuery({
+  args: { personaId: v.string() },
+  handler: async (ctx, { personaId }) => {
+    // Try to load it as a document ID from customPersonas table
+    try {
+      const persona = await ctx.db.get(personaId as any);
+      if (persona) {
+        return {
+          name: persona.name as string,
+          systemPrompt: persona.systemPrompt as string,
+          temperature: persona.temperature as number,
+        };
+      }
+    } catch {
+      // Not a valid ID, that's fine
+    }
+    return null;
   },
 });
 
@@ -253,8 +280,27 @@ export const generateAiSubmissions = internalAction({
     });
     if (!roundInfo || roundInfo.round.status !== "submitting") return;
 
-    const { round, promptCard, players, submissions } = roundInfo;
+    const { round, promptCard, players, submissions, hostId } = roundInfo;
     if (!promptCard) return;
+
+    // Try to get the host's API key for BYOK
+    let userApiKey: string | undefined;
+    if (hostId) {
+      const keyRecord = await ctx.runQuery(
+        internal.apiKeys.getEncryptedKey,
+        { userId: hostId, provider: "openai" }
+      );
+      if (keyRecord && keyRecord.isValid) {
+        try {
+          userApiKey = decryptApiKey(keyRecord.encryptedKey);
+        } catch {
+          // Decryption failed — mark key invalid and fall back to default
+          await ctx.runMutation(internal.apiKeys.markKeyInvalid, {
+            keyId: keyRecord._id,
+          });
+        }
+      }
+    }
 
     const submittedPlayerIds = new Set(
       submissions.map((s: { playerId: string }) => s.playerId)
@@ -271,7 +317,16 @@ export const generateAiSubmissions = internalAction({
     for (const aiPlayer of aiPlayersToSubmit) {
       if (!aiPlayer.aiPersonaId) continue;
 
-      const persona = AI_PERSONAS[aiPlayer.aiPersonaId];
+      // Look up persona: first check built-in, then custom
+      let persona = AI_PERSONAS[aiPlayer.aiPersonaId] as
+        | { name: string; systemPrompt: string; temperature: number }
+        | undefined;
+
+      if (!persona) {
+        persona = await ctx.runQuery(internal.ai.getCustomPersona, {
+          personaId: aiPlayer.aiPersonaId,
+        });
+      }
       if (!persona) continue;
 
       let responseText: string;
@@ -288,17 +343,36 @@ export const generateAiSubmissions = internalAction({
             Math.floor(Math.random() * cached.responses.length)
           ];
       } else {
-        // 2) Check rate limit before calling the API
-        const limited = await isRateLimited(gameId);
-        if (limited) {
-          responseText = "I'm thinking too hard... my brain hurts.";
+        // 2) Check rate limit before calling the API (skip for BYOK users)
+        if (!userApiKey) {
+          const limited = await isRateLimited(gameId);
+          if (limited) {
+            responseText = "I'm thinking too hard... my brain hurts.";
+          } else {
+            // 3) Call OpenAI with default key
+            try {
+              responseText = await callOpenAI(promptCard.text, persona);
+            } catch (err) {
+              console.error("OpenAI API error:", err);
+              responseText = "My circuits are fried right now.";
+            }
+          }
         } else {
-          // 3) Call OpenAI
+          // 3) Call OpenAI with user's key (no rate limit)
           try {
-            responseText = await callOpenAI(promptCard.text, persona);
+            responseText = await callOpenAI(
+              promptCard.text,
+              persona,
+              userApiKey
+            );
           } catch (err) {
-            console.error("OpenAI API error:", err);
-            responseText = "My circuits are fried right now.";
+            console.error("OpenAI API error with user key:", err);
+            // Fall back to default key
+            try {
+              responseText = await callOpenAI(promptCard.text, persona);
+            } catch {
+              responseText = "My circuits are fried right now.";
+            }
           }
         }
 
@@ -403,4 +477,4 @@ export const getPersonas = action({
   },
 });
 
-export { MAX_AI_PLAYERS_PER_GAME };
+export { MAX_AI_PLAYERS_PER_GAME, MAX_AI_PLAYERS_WITH_OWN_KEY };

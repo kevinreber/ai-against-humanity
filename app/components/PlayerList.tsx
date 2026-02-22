@@ -15,9 +15,11 @@ interface PlayerListProps {
   players: Player[];
   currentUserId?: string;
   className?: string;
+  /** Map of custom persona IDs to display names (for user-created personas) */
+  customPersonaNames?: Record<string, string>;
 }
 
-export function PlayerList({ players, currentUserId, className }: PlayerListProps) {
+export function PlayerList({ players, currentUserId, className, customPersonaNames }: PlayerListProps) {
   return (
     <div className={cn("space-y-2", className)}>
       <h3 className="text-sm font-bold uppercase tracking-wider text-gray-400 mb-3">
@@ -29,6 +31,7 @@ export function PlayerList({ players, currentUserId, className }: PlayerListProp
             key={player._id}
             player={player}
             isCurrentUser={player.userId === currentUserId}
+            customPersonaNames={customPersonaNames}
           />
         ))}
       </div>
@@ -39,11 +42,14 @@ export function PlayerList({ players, currentUserId, className }: PlayerListProp
 interface PlayerItemProps {
   player: Player;
   isCurrentUser: boolean;
+  customPersonaNames?: Record<string, string>;
 }
 
-function PlayerItem({ player, isCurrentUser }: PlayerItemProps) {
+function PlayerItem({ player, isCurrentUser, customPersonaNames }: PlayerItemProps) {
   const displayName = player.isAi
-    ? AI_PERSONA_NAMES[player.aiPersonaId || ""] || "AI Player"
+    ? AI_PERSONA_NAMES[player.aiPersonaId || ""] ||
+      customPersonaNames?.[player.aiPersonaId || ""] ||
+      "AI Player"
     : player.username || "Player";
 
   return (
