@@ -27,9 +27,11 @@ test.describe("Home Page", () => {
   test("should have Create Game and Join Game buttons", async ({ page }) => {
     const createGameBtn = page.locator('a:has-text("Create Game")');
     const joinGameBtn = page.locator('a:has-text("Join Game")');
+    const settingsBtn = page.locator('a:has-text("Settings")');
 
     await expect(createGameBtn).toBeVisible();
     await expect(joinGameBtn).toBeVisible();
+    await expect(settingsBtn).toBeVisible();
 
     // Check neon button styling
     await expect(createGameBtn).toHaveClass(/btn-neon-pink/);
@@ -89,6 +91,20 @@ test.describe("Home Page", () => {
   }) => {
     await page.click('a:has-text("Join Game")');
     await expect(page).toHaveURL(/\/games/);
+  });
+
+  test("should navigate to Settings page when clicking Settings", async ({
+    page,
+  }) => {
+    await page.click('a:has-text("Settings")');
+    await expect(page).toHaveURL(/\/settings/);
+  });
+
+  test("should display custom persona CTA in AI personas section", async ({
+    page,
+  }) => {
+    const cta = page.locator('a:has-text("create your own AI personality")');
+    await expect(cta).toBeVisible();
   });
 
   test("should have proper dark theme styling", async ({ page }) => {
