@@ -105,6 +105,9 @@ export default defineSchema({
     keyHint: v.string(), // last 4 chars for display, e.g. "...7xQ2"
     isValid: v.boolean(),
     createdAt: v.number(),
+    lastUsed: v.optional(v.number()),
+    lastError: v.optional(v.string()),
+    lastErrorAt: v.optional(v.number()),
   })
     .index("by_user", ["userId"])
     .index("by_user_and_provider", ["userId", "provider"]),

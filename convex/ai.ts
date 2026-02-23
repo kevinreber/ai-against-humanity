@@ -9,7 +9,7 @@ import { v } from "convex/values";
 import OpenAI from "openai";
 import { Redis } from "@upstash/redis";
 import { Ratelimit } from "@upstash/ratelimit";
-import { decryptApiKey } from "./apiKeys";
+import { decryptApiKey, classifyOpenAIError } from "./apiKeys";
 
 // ---------------------------------------------------------------------------
 // AI Persona definitions (built-in)
@@ -285,6 +285,7 @@ export const generateAiSubmissions = internalAction({
 
     // Try to get the host's API key for BYOK
     let userApiKey: string | undefined;
+    let userKeyRecord: { _id: any; encryptedKey: string; isValid: boolean } | null = null;
     if (hostId) {
       const keyRecord = await ctx.runQuery(
         internal.apiKeys.getEncryptedKey,
@@ -293,10 +294,12 @@ export const generateAiSubmissions = internalAction({
       if (keyRecord && keyRecord.isValid) {
         try {
           userApiKey = decryptApiKey(keyRecord.encryptedKey);
+          userKeyRecord = keyRecord;
         } catch {
           // Decryption failed — mark key invalid and fall back to default
           await ctx.runMutation(internal.apiKeys.markKeyInvalid, {
             keyId: keyRecord._id,
+            error: "Failed to decrypt key — it may be corrupted",
           });
         }
       }
@@ -313,6 +316,9 @@ export const generateAiSubmissions = internalAction({
         p._id !== round.judgePlayerId &&
         !submittedPlayerIds.has(p._id)
     );
+
+    // Track whether user key failed so we only mark invalid once
+    let userKeyFailed = false;
 
     for (const aiPlayer of aiPlayersToSubmit) {
       if (!aiPlayer.aiPersonaId) continue;
@@ -344,7 +350,7 @@ export const generateAiSubmissions = internalAction({
           ];
       } else {
         // 2) Check rate limit before calling the API (skip for BYOK users)
-        if (!userApiKey) {
+        if (!userApiKey || userKeyFailed) {
           const limited = await isRateLimited(gameId);
           if (limited) {
             responseText = "I'm thinking too hard... my brain hurts.";
@@ -365,8 +371,25 @@ export const generateAiSubmissions = internalAction({
               persona,
               userApiKey
             );
+            // Mark successful usage
+            if (userKeyRecord) {
+              await ctx.runMutation(internal.apiKeys.markKeyUsed, {
+                keyId: userKeyRecord._id,
+              });
+            }
           } catch (err) {
             console.error("OpenAI API error with user key:", err);
+            userKeyFailed = true;
+
+            // Mark the key invalid with a descriptive error
+            if (userKeyRecord) {
+              const errorMsg = classifyOpenAIError(err);
+              await ctx.runMutation(internal.apiKeys.markKeyInvalid, {
+                keyId: userKeyRecord._id,
+                error: errorMsg,
+              });
+            }
+
             // Fall back to default key
             try {
               responseText = await callOpenAI(promptCard.text, persona);

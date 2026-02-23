@@ -60,6 +60,12 @@ export const createPersona = mutation({
     isPublic: v.boolean(),
   },
   handler: async (ctx, args) => {
+    // Verify user exists
+    const user = await ctx.db.get(args.creatorId);
+    if (!user) {
+      throw new Error("User not found. Please create a game first.");
+    }
+
     // Enforce per-user limit
     const existing = await ctx.db
       .query("customPersonas")

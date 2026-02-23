@@ -8,6 +8,14 @@ import { encrypt, decrypt } from "./encryption";
 // Internal helpers (used by AI service)
 // ---------------------------------------------------------------------------
 
+/** Verify a user exists in the database */
+export const verifyUser = internalQuery({
+  args: { userId: v.id("users") },
+  handler: async (ctx, { userId }) => {
+    return ctx.db.get(userId);
+  },
+});
+
 /** Get the encrypted key for a user+provider (internal use only) */
 export const getEncryptedKey = internalQuery({
   args: {
@@ -56,11 +64,26 @@ export const storeEncryptedKey = internalMutation({
   },
 });
 
-/** Mark a key as invalid (e.g., when it fails during gameplay) */
+/** Mark a key as invalid with error details (e.g., when it fails during gameplay) */
 export const markKeyInvalid = internalMutation({
+  args: {
+    keyId: v.id("userApiKeys"),
+    error: v.optional(v.string()),
+  },
+  handler: async (ctx, { keyId, error }) => {
+    await ctx.db.patch(keyId, {
+      isValid: false,
+      lastError: error || "Key validation failed",
+      lastErrorAt: Date.now(),
+    });
+  },
+});
+
+/** Record successful key usage */
+export const markKeyUsed = internalMutation({
   args: { keyId: v.id("userApiKeys") },
   handler: async (ctx, { keyId }) => {
-    await ctx.db.patch(keyId, { isValid: false });
+    await ctx.db.patch(keyId, { lastUsed: Date.now() });
   },
 });
 
@@ -84,6 +107,9 @@ export const getMyApiKeys = query({
       keyHint: k.keyHint,
       isValid: k.isValid,
       createdAt: k.createdAt,
+      lastUsed: k.lastUsed,
+      lastError: k.lastError,
+      lastErrorAt: k.lastErrorAt,
     }));
   },
 });
@@ -91,6 +117,27 @@ export const getMyApiKeys = query({
 // ---------------------------------------------------------------------------
 // Actions (can access process.env, make external API calls)
 // ---------------------------------------------------------------------------
+
+/** Classify an OpenAI error into a user-friendly message */
+function classifyOpenAIError(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err);
+  if (message.includes("401") || message.includes("invalid_api_key")) {
+    return "Invalid or revoked API key";
+  }
+  if (message.includes("429")) {
+    return "Rate limit exceeded on your API key";
+  }
+  if (message.includes("403")) {
+    return "API key does not have required permissions";
+  }
+  if (message.includes("insufficient_quota")) {
+    return "API key has exhausted its quota";
+  }
+  if (message.includes("billing")) {
+    return "Billing issue with your API account";
+  }
+  return `API error: ${message.slice(0, 100)}`;
+}
 
 /** Validate and save an API key */
 export const saveApiKey = action({
@@ -100,33 +147,32 @@ export const saveApiKey = action({
     apiKey: v.string(),
   },
   handler: async (ctx, { userId, provider, apiKey }) => {
-    // 1) Basic format validation
+    // 1) Verify user exists
+    const user = await ctx.runQuery(internal.apiKeys.verifyUser, { userId });
+    if (!user) {
+      throw new Error("User not found. Please create a game first.");
+    }
+
+    // 2) Basic format validation
     if (provider === "openai" && !apiKey.startsWith("sk-")) {
       throw new Error("Invalid OpenAI API key format. Keys start with 'sk-'.");
     }
 
-    // 2) Validate the key by making a lightweight API call
+    // 3) Validate the key by making a lightweight API call
     if (provider === "openai") {
       try {
         const openai = new OpenAI({ apiKey });
         await openai.models.list();
       } catch (err: unknown) {
-        const message =
-          err instanceof Error ? err.message : "Unknown error";
-        if (message.includes("401") || message.includes("invalid")) {
-          throw new Error(
-            "Invalid API key. Please check your key and try again."
-          );
-        }
-        throw new Error(`Failed to validate key: ${message}`);
+        throw new Error(classifyOpenAIError(err));
       }
     }
 
-    // 3) Encrypt the key
+    // 4) Encrypt the key
     const encryptedKey = encrypt(apiKey);
     const keyHint = `...${apiKey.slice(-4)}`;
 
-    // 4) Store it
+    // 5) Store it
     await ctx.runMutation(internal.apiKeys.storeEncryptedKey, {
       userId,
       provider,
@@ -145,10 +191,16 @@ export const deleteApiKey = action({
     keyId: v.id("userApiKeys"),
   },
   handler: async (ctx, { userId, keyId }) => {
+    // Verify user exists
+    const user = await ctx.runQuery(internal.apiKeys.verifyUser, { userId });
+    if (!user) {
+      throw new Error("User not found.");
+    }
+
     // Verify ownership via internal query
     const key = await ctx.runQuery(internal.apiKeys.getEncryptedKey, {
       userId,
-      provider: "openai", // We'll verify by ID instead
+      provider: "openai",
     });
 
     if (!key || key._id !== keyId) {
@@ -182,3 +234,6 @@ export const removeKey = internalMutation({
 export function decryptApiKey(encryptedKey: string): string {
   return decrypt(encryptedKey);
 }
+
+/** Exported for use in ai.ts to classify errors during gameplay */
+export { classifyOpenAIError };

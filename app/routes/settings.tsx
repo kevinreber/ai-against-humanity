@@ -23,7 +23,13 @@ export default function Settings() {
     if (stored) setUserId(stored);
   }, []);
 
-  if (!userId) {
+  // Verify the user actually exists in the database
+  const user = useQuery(
+    api.users.getUser,
+    userId ? { userId: userId as Id<"users"> } : "skip"
+  );
+
+  if (!userId || (userId && user === null)) {
     return (
       <div className="container mx-auto px-4 py-12 max-w-2xl text-center">
         <p className="text-gray-400 mb-4">
@@ -32,6 +38,20 @@ export default function Settings() {
         <Link to="/games/new" className="btn-neon-pink">
           Create a Game
         </Link>
+      </div>
+    );
+  }
+
+  // Still loading user
+  if (user === undefined) {
+    return (
+      <div className="container mx-auto px-4 py-12 text-center">
+        <div className="ai-typing inline-block text-[--color-neon-cyan]">
+          <span className="text-2xl">.</span>
+          <span className="text-2xl">.</span>
+          <span className="text-2xl">.</span>
+        </div>
+        <p className="text-gray-500 mt-2">Loading...</p>
       </div>
     );
   }
@@ -119,25 +139,49 @@ function ApiKeySection({ userId }: { userId: Id<"users"> }) {
           {apiKeys.map((key) => (
             <div
               key={key._id}
-              className="flex items-center justify-between p-3 rounded-lg bg-[--color-dark-card] border border-gray-800"
+              className={cn(
+                "p-3 rounded-lg bg-[--color-dark-card] border",
+                key.isValid ? "border-gray-800" : "border-red-900/50"
+              )}
             >
-              <div className="flex items-center gap-3">
-                <span className="text-xs px-2 py-1 rounded bg-[--color-neon-green]/20 text-[--color-neon-green] uppercase font-bold">
-                  {key.provider}
-                </span>
-                <span className="font-mono text-gray-400">{key.keyHint}</span>
-                {!key.isValid && (
-                  <span className="text-xs px-2 py-1 rounded bg-red-900/30 text-red-400">
-                    Invalid
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="text-xs px-2 py-1 rounded bg-[--color-neon-green]/20 text-[--color-neon-green] uppercase font-bold">
+                    {key.provider}
                   </span>
-                )}
+                  <span className="font-mono text-gray-400">{key.keyHint}</span>
+                  {key.isValid ? (
+                    key.lastUsed && (
+                      <span className="text-xs text-gray-600">
+                        Last used {new Date(key.lastUsed).toLocaleDateString()}
+                      </span>
+                    )
+                  ) : (
+                    <span className="text-xs px-2 py-1 rounded bg-red-900/30 text-red-400">
+                      Invalid
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={() => handleDelete(key._id as Id<"userApiKeys">)}
+                  className="text-xs text-red-400 hover:text-red-300 transition-colors"
+                >
+                  Remove
+                </button>
               </div>
-              <button
-                onClick={() => handleDelete(key._id as Id<"userApiKeys">)}
-                className="text-xs text-red-400 hover:text-red-300 transition-colors"
-              >
-                Remove
-              </button>
+              {!key.isValid && key.lastError && (
+                <div className="mt-2 p-2 rounded bg-red-900/10 text-xs text-red-400">
+                  {key.lastError}
+                  {key.lastErrorAt && (
+                    <span className="text-red-600 ml-2">
+                      ({new Date(key.lastErrorAt).toLocaleString()})
+                    </span>
+                  )}
+                  <p className="text-red-600 mt-1">
+                    Remove this key and add a new one to fix.
+                  </p>
+                </div>
+              )}
             </div>
           ))}
         </div>
