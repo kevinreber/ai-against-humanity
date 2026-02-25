@@ -49,8 +49,11 @@ export const AI_PERSONAS: Record<
   },
 };
 
-const MAX_AI_PLAYERS_PER_GAME = 3;
-const MAX_AI_PLAYERS_WITH_OWN_KEY = 5;
+import {
+  MAX_AI_PLAYERS_PER_GAME,
+  MAX_AI_PLAYERS_WITH_OWN_KEY,
+} from "./gameConstants";
+
 const MAX_CACHED_RESPONSES_PER_PROMPT = 5;
 
 // ---------------------------------------------------------------------------
@@ -499,5 +502,3 @@ export const getPersonas = action({
     }));
   },
 });
-
-export { MAX_AI_PLAYERS_PER_GAME, MAX_AI_PLAYERS_WITH_OWN_KEY };

@@ -60,6 +60,15 @@ function GamePage() {
       : "skip"
   );
 
+  // Check host's API key status (must be before conditional returns to satisfy Rules of Hooks)
+  const isHost = gameState?.game?.hostId === currentUserId;
+  const hostApiKeys = useQuery(
+    api.apiKeys.getMyApiKeys,
+    gameState && currentUserId && isHost
+      ? { userId: gameState.game.hostId }
+      : "skip"
+  );
+
   // Convex mutations
   const startGame = useMutation(api.games.startGame);
   const submitCard = useMutation(api.games.submitCard);
@@ -140,15 +149,8 @@ function GamePage() {
 
   const { game, players, currentRound, promptCard } = gameState;
   const currentPlayer = players.find((p) => p.userId === currentUserId);
-  const isHost = game.hostId === currentUserId;
   const isJudge = currentPlayer?._id === currentRound?.judgePlayerId;
   const hasSubmitted = submissions?.some((s) => s.playerId === currentPlayer?._id);
-
-  // Check host's API key status (only query if current user is host)
-  const hostApiKeys = useQuery(
-    api.apiKeys.getMyApiKeys,
-    isHost ? { userId: game.hostId } : "skip"
-  );
 
   const apiKeyWarning = isHost && hostApiKeys?.some((k) => !k.isValid && k.lastError)
     ? hostApiKeys.find((k) => !k.isValid && k.lastError)
