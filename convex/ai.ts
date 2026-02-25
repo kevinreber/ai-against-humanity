@@ -9,7 +9,10 @@ import { v } from "convex/values";
 import OpenAI from "openai";
 import { Redis } from "@upstash/redis";
 import { Ratelimit } from "@upstash/ratelimit";
-import { decryptApiKey, classifyOpenAIError } from "./apiKeys";
+import {
+  MAX_AI_PLAYERS_PER_GAME,
+  MAX_AI_PLAYERS_WITH_OWN_KEY,
+} from "./gameConstants";
 
 // ---------------------------------------------------------------------------
 // AI Persona definitions (built-in)
@@ -48,11 +51,6 @@ export const AI_PERSONAS: Record<
     temperature: 0.3,
   },
 };
-
-import {
-  MAX_AI_PLAYERS_PER_GAME,
-  MAX_AI_PLAYERS_WITH_OWN_KEY,
-} from "./gameConstants";
 
 const MAX_CACHED_RESPONSES_PER_PROMPT = 5;
 
@@ -277,6 +275,9 @@ export const checkAndMoveToJudging = internalMutation({
 export const generateAiSubmissions = internalAction({
   args: { gameId: v.id("games"), roundId: v.id("rounds") },
   handler: async (ctx, { gameId, roundId }) => {
+    // Dynamic imports to avoid pulling Node.js `crypto` into V8 query/mutation bundles
+    const { decryptApiKey, classifyOpenAIError } = await import("./apiKeys");
+
     const roundInfo = await ctx.runQuery(internal.ai.getRoundInfo, {
       roundId,
       gameId,

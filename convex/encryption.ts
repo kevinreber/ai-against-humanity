@@ -1,3 +1,4 @@
+"use node";
 import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
 
 const ALGORITHM = "aes-256-gcm";
