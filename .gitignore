@@ -3,6 +3,12 @@
 .env.local
 /node_modules/
 
+# Next.js (accidental)
+/.next/
+
+# Vercel
+/.vercel/
+
 # Convex
 /convex/_generated/
 
