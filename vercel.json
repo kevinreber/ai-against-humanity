@@ -1,0 +1,3 @@
+{
+  "buildCommand": "npx convex deploy --cmd-url-env-var-name VITE_CONVEX_URL --cmd 'npm run build'"
+}

@@ -3,6 +3,9 @@
 .env.local
 /node_modules/
 
+# Convex
+/convex/_generated/
+
 # React Router
 /.react-router/
 /build/
