@@ -1,3 +1,4 @@
+"use node";
 import {
   action,
   internalAction,
@@ -13,6 +14,7 @@ import {
   MAX_AI_PLAYERS_PER_GAME,
   MAX_AI_PLAYERS_WITH_OWN_KEY,
 } from "./gameConstants";
+import { decryptApiKey, classifyOpenAIError } from "./apiKeys";
 
 // ---------------------------------------------------------------------------
 // AI Persona definitions (built-in)
@@ -275,9 +277,6 @@ export const checkAndMoveToJudging = internalMutation({
 export const generateAiSubmissions = internalAction({
   args: { gameId: v.id("games"), roundId: v.id("rounds") },
   handler: async (ctx, { gameId, roundId }) => {
-    // Dynamic imports to avoid pulling Node.js `crypto` into V8 query/mutation bundles
-    const { decryptApiKey, classifyOpenAIError } = await import("./apiKeys");
-
     const roundInfo = await ctx.runQuery(internal.ai.getRoundInfo, {
       roundId,
       gameId,
