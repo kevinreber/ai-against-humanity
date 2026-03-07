@@ -41,13 +41,16 @@ export const getCustomPersona = internalQuery({
   handler: async (ctx, { personaId }) => {
     // Try to load it as a document ID from customPersonas table
     try {
-      const persona = await ctx.db.get(personaId as any);
-      if (persona) {
-        return {
-          name: persona.name as string,
-          systemPrompt: persona.systemPrompt as string,
-          temperature: persona.temperature as number,
-        };
+      const id = ctx.db.normalizeId("customPersonas", personaId);
+      if (id) {
+        const persona = await ctx.db.get(id);
+        if (persona) {
+          return {
+            name: persona.name,
+            systemPrompt: persona.systemPrompt,
+            temperature: persona.temperature,
+          };
+        }
       }
     } catch {
       // Not a valid ID, that's fine

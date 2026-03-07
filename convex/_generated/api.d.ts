@@ -15,7 +15,11 @@ import type {
 } from "convex/server";
 import type * as ai from "../ai.js";
 import type * as aiPersonas from "../aiPersonas.js";
+import type * as aiQueries from "../aiQueries.js";
+import type * as apiKeyQueries from "../apiKeyQueries.js";
+import type * as apiKeys from "../apiKeys.js";
 import type * as cards from "../cards.js";
+import type * as customPersonas from "../customPersonas.js";
 import type * as games from "../games.js";
 import type * as rateLimit from "../rateLimit.js";
 import type * as rounds from "../rounds.js";
@@ -25,7 +29,11 @@ import type * as users from "../users.js";
 declare const fullApi: ApiFromModules<{
   ai: typeof ai;
   aiPersonas: typeof aiPersonas;
+  aiQueries: typeof aiQueries;
+  apiKeyQueries: typeof apiKeyQueries;
+  apiKeys: typeof apiKeys;
   cards: typeof cards;
+  customPersonas: typeof customPersonas;
   games: typeof games;
   rateLimit: typeof rateLimit;
   rounds: typeof rounds;

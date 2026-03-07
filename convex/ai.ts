@@ -169,9 +169,9 @@ export const generateAiSubmissions = internalAction({
         | undefined;
 
       if (!persona) {
-        persona = await ctx.runQuery(internal.aiQueries.getCustomPersona, {
+        persona = (await ctx.runQuery(internal.aiQueries.getCustomPersona, {
           personaId: aiPlayer.aiPersonaId,
-        });
+        })) ?? undefined;
       }
       if (!persona) continue;
 
