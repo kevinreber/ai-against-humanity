@@ -1,0 +1,34 @@
+#!/bin/sh
+# Pre-push hook: run TypeScript typecheck to catch errors before CI.
+# Catches issues like queries in "use node" files, type mismatches, etc.
+#
+# To install: git config core.hooksPath .githooks
+# Or: cp .githooks/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
+
+echo "Running pre-push checks..."
+
+# Run convex codegen if a deployment is configured (regenerates types)
+if [ -n "$CONVEX_DEPLOYMENT" ] || grep -q "CONVEX_DEPLOYMENT" .env.local 2>/dev/null; then
+  echo "→ Generating Convex types..."
+  npx convex codegen 2>&1
+  if [ $? -ne 0 ]; then
+    echo "✖ Convex codegen failed. Push aborted."
+    exit 1
+  fi
+fi
+
+echo "→ Running TypeScript typecheck..."
+npx tsc --noEmit 2>&1
+if [ $? -ne 0 ]; then
+  echo "✖ TypeScript typecheck failed. Push aborted."
+  exit 1
+fi
+
+echo "→ Running unit tests..."
+npx vitest run 2>&1
+if [ $? -ne 0 ]; then
+  echo "✖ Unit tests failed. Push aborted."
+  exit 1
+fi
+
+echo "✔ All pre-push checks passed."

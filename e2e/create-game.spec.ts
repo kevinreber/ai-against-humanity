@@ -2,6 +2,10 @@ import { test, expect } from "@playwright/test";
 
 test.describe("Create Game Page", () => {
   test.beforeEach(async ({ page }) => {
+    // Block Convex backend requests (HTTP + WebSocket) to prevent
+    // reconnection-driven re-renders that destabilize DOM elements.
+    await page.routeWebSocket(/convex\.cloud/, (ws) => ws.close());
+    await page.route(/convex\.cloud/, (route) => route.abort());
     await page.goto("/games/new");
   });
 
@@ -89,6 +93,23 @@ test.describe("Create Game Page", () => {
     // Select another AI
     await page.click('button:has-text("Edgy Eddie")');
     await expect(page.locator("text=Selected: 2 AI player(s)")).toBeVisible();
+  });
+
+  test("should have link to create custom persona", async ({ page }) => {
+    const customPersonaLink = page.locator(
+      'a:has-text("Create custom persona")'
+    );
+    await expect(customPersonaLink).toBeVisible();
+  });
+
+  test("should navigate to settings when clicking create custom persona", async ({
+    page,
+  }) => {
+    const customPersonaLink = page.locator(
+      'a:has-text("Create custom persona")'
+    );
+    await customPersonaLink.click();
+    await expect(page).toHaveURL(/\/settings/);
   });
 
   test("should display points to win options", async ({ page }) => {

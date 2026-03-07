@@ -34,7 +34,7 @@ export const getSubmissions = query({
           text = card?.text;
         }
         const player = await ctx.db.get(sub.playerId);
-        return { ...sub, text, player };
+        return { ...sub, text, player: player ?? undefined };
       })
     );
 
