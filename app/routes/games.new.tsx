@@ -151,6 +151,7 @@ export default function NewGame() {
     try {
       // Create guest user
       const newUserId = await createGuestUser({ username: username.trim() });
+      localStorage.setItem("userId", newUserId);
 
       // Create the game
       const { gameId } = await createGame({
