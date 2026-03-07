@@ -57,7 +57,7 @@ function createMockGameState(hostId: string) {
  * - Server responds: Transition (with query results), MutationResponse
  */
 async function setupConvexMock(page: Page, gameState: ReturnType<typeof createMockGameState>) {
-  await page.routeWebSocket(/placeholder\.convex\.cloud/, (ws) => {
+  await page.routeWebSocket(/\.convex\.cloud/, (ws) => {
     let identityVersion = 0;
 
     ws.onMessage((msg) => {
@@ -145,7 +145,7 @@ async function setupConvexMock(page: Page, gameState: ReturnType<typeof createMo
   });
 
   // Block any HTTP fallback requests to Convex
-  await page.route(/placeholder\.convex\.cloud/, (route) => route.abort());
+  await page.route(/\.convex\.cloud/, (route) => route.abort());
 }
 
 test.describe("Game Lobby - Host Start Button", () => {
