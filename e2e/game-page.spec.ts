@@ -115,6 +115,11 @@ test.describe("Game Flow Integration", () => {
   });
 
   test("navigation flow between pages", async ({ page }) => {
+    // Block Convex backend requests (HTTP + WebSocket) to prevent
+    // reconnection-driven re-renders that destabilize DOM elements.
+    await page.routeWebSocket(/convex\.cloud/, (ws) => ws.close());
+    await page.route(/convex\.cloud/, (route) => route.abort());
+
     // Home -> Games List
     await page.goto("/");
     await page.waitForLoadState("domcontentloaded");

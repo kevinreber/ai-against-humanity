@@ -2,6 +2,10 @@ import { test, expect } from "@playwright/test";
 
 test.describe("Games List Page", () => {
   test.beforeEach(async ({ page }) => {
+    // Block Convex backend requests (HTTP + WebSocket) to prevent
+    // reconnection-driven re-renders that destabilize DOM elements.
+    await page.routeWebSocket(/convex\.cloud/, (ws) => ws.close());
+    await page.route(/convex\.cloud/, (route) => route.abort());
     await page.goto("/games");
   });
 
