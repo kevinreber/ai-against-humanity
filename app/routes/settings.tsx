@@ -82,7 +82,7 @@ export default function Settings() {
 // API Key Management
 // ---------------------------------------------------------------------------
 function ApiKeySection({ userId }: { userId: Id<"users"> }) {
-  const apiKeys = useQuery(api.apiKeys.getMyApiKeys, { userId });
+  const apiKeys = useQuery(api.apiKeyQueries.getMyApiKeys, { userId });
   const saveApiKey = useAction(api.apiKeys.saveApiKey);
   const deleteApiKey = useAction(api.apiKeys.deleteApiKey);
 

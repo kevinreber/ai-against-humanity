@@ -1,122 +1,12 @@
 "use node";
-import { action, internalMutation, internalQuery, query } from "./_generated/server";
+import { action } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import OpenAI from "openai";
 import { encrypt, decrypt } from "./encryption";
 
 // ---------------------------------------------------------------------------
-// Internal helpers (used by AI service)
-// ---------------------------------------------------------------------------
-
-/** Verify a user exists in the database */
-export const verifyUser = internalQuery({
-  args: { userId: v.id("users") },
-  handler: async (ctx, { userId }) => {
-    return ctx.db.get(userId);
-  },
-});
-
-/** Get the encrypted key for a user+provider (internal use only) */
-export const getEncryptedKey = internalQuery({
-  args: {
-    userId: v.id("users"),
-    provider: v.union(v.literal("openai"), v.literal("anthropic")),
-  },
-  handler: async (ctx, { userId, provider }) => {
-    return ctx.db
-      .query("userApiKeys")
-      .withIndex("by_user_and_provider", (q) =>
-        q.eq("userId", userId).eq("provider", provider)
-      )
-      .first();
-  },
-});
-
-/** Store an encrypted API key */
-export const storeEncryptedKey = internalMutation({
-  args: {
-    userId: v.id("users"),
-    provider: v.union(v.literal("openai"), v.literal("anthropic")),
-    encryptedKey: v.string(),
-    keyHint: v.string(),
-  },
-  handler: async (ctx, { userId, provider, encryptedKey, keyHint }) => {
-    // Remove existing key for this user+provider
-    const existing = await ctx.db
-      .query("userApiKeys")
-      .withIndex("by_user_and_provider", (q) =>
-        q.eq("userId", userId).eq("provider", provider)
-      )
-      .first();
-
-    if (existing) {
-      await ctx.db.delete(existing._id);
-    }
-
-    return ctx.db.insert("userApiKeys", {
-      userId,
-      provider,
-      encryptedKey,
-      keyHint,
-      isValid: true,
-      createdAt: Date.now(),
-    });
-  },
-});
-
-/** Mark a key as invalid with error details (e.g., when it fails during gameplay) */
-export const markKeyInvalid = internalMutation({
-  args: {
-    keyId: v.id("userApiKeys"),
-    error: v.optional(v.string()),
-  },
-  handler: async (ctx, { keyId, error }) => {
-    await ctx.db.patch(keyId, {
-      isValid: false,
-      lastError: error || "Key validation failed",
-      lastErrorAt: Date.now(),
-    });
-  },
-});
-
-/** Record successful key usage */
-export const markKeyUsed = internalMutation({
-  args: { keyId: v.id("userApiKeys") },
-  handler: async (ctx, { keyId }) => {
-    await ctx.db.patch(keyId, { lastUsed: Date.now() });
-  },
-});
-
-// ---------------------------------------------------------------------------
-// Public queries (for UI)
-// ---------------------------------------------------------------------------
-
-/** Get API key info for a user (never returns the actual key) */
-export const getMyApiKeys = query({
-  args: { userId: v.id("users") },
-  handler: async (ctx, { userId }) => {
-    const keys = await ctx.db
-      .query("userApiKeys")
-      .withIndex("by_user", (q) => q.eq("userId", userId))
-      .collect();
-
-    // Strip encrypted key — only return display info
-    return keys.map((k) => ({
-      _id: k._id,
-      provider: k.provider,
-      keyHint: k.keyHint,
-      isValid: k.isValid,
-      createdAt: k.createdAt,
-      lastUsed: k.lastUsed,
-      lastError: k.lastError,
-      lastErrorAt: k.lastErrorAt,
-    }));
-  },
-});
-
-// ---------------------------------------------------------------------------
-// Actions (can access process.env, make external API calls)
+// Actions (require Node.js for crypto + external API calls)
 // ---------------------------------------------------------------------------
 
 /** Classify an OpenAI error into a user-friendly message */
@@ -149,7 +39,7 @@ export const saveApiKey = action({
   },
   handler: async (ctx, { userId, provider, apiKey }) => {
     // 1) Verify user exists
-    const user = await ctx.runQuery(internal.apiKeys.verifyUser, { userId });
+    const user = await ctx.runQuery(internal.apiKeyQueries.verifyUser, { userId });
     if (!user) {
       throw new Error("User not found. Please create a game first.");
     }
@@ -174,7 +64,7 @@ export const saveApiKey = action({
     const keyHint = `...${apiKey.slice(-4)}`;
 
     // 5) Store it
-    await ctx.runMutation(internal.apiKeys.storeEncryptedKey, {
+    await ctx.runMutation(internal.apiKeyQueries.storeEncryptedKey, {
       userId,
       provider,
       encryptedKey,
@@ -193,13 +83,13 @@ export const deleteApiKey = action({
   },
   handler: async (ctx, { userId, keyId }) => {
     // Verify user exists
-    const user = await ctx.runQuery(internal.apiKeys.verifyUser, { userId });
+    const user = await ctx.runQuery(internal.apiKeyQueries.verifyUser, { userId });
     if (!user) {
       throw new Error("User not found.");
     }
 
     // Verify ownership via internal query
-    const key = await ctx.runQuery(internal.apiKeys.getEncryptedKey, {
+    const key = await ctx.runQuery(internal.apiKeyQueries.getEncryptedKey, {
       userId,
       provider: "openai",
     });
@@ -207,7 +97,7 @@ export const deleteApiKey = action({
     if (!key || key._id !== keyId) {
       // Try anthropic
       const anthropicKey = await ctx.runQuery(
-        internal.apiKeys.getEncryptedKey,
+        internal.apiKeyQueries.getEncryptedKey,
         { userId, provider: "anthropic" }
       );
       if (!anthropicKey || anthropicKey._id !== keyId) {
@@ -215,16 +105,8 @@ export const deleteApiKey = action({
       }
     }
 
-    await ctx.runMutation(internal.apiKeys.removeKey, { keyId });
+    await ctx.runMutation(internal.apiKeyQueries.removeKey, { keyId });
     return { success: true };
-  },
-});
-
-/** Internal mutation to delete a key */
-export const removeKey = internalMutation({
-  args: { keyId: v.id("userApiKeys") },
-  handler: async (ctx, { keyId }) => {
-    await ctx.db.delete(keyId);
   },
 });
 

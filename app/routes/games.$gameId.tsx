@@ -63,7 +63,7 @@ function GamePage() {
   // Check host's API key status (must be before conditional returns to satisfy Rules of Hooks)
   const isHost = gameState?.game?.hostId === currentUserId;
   const hostApiKeys = useQuery(
-    api.apiKeys.getMyApiKeys,
+    api.apiKeyQueries.getMyApiKeys,
     gameState && currentUserId && isHost
       ? { userId: gameState.game.hostId }
       : "skip"

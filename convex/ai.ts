@@ -128,7 +128,7 @@ export const generateAiSubmissions = internalAction({
     let userKeyRecord: { _id: any; encryptedKey: string; isValid: boolean } | null = null;
     if (hostId) {
       const keyRecord = await ctx.runQuery(
-        internal.apiKeys.getEncryptedKey,
+        internal.apiKeyQueries.getEncryptedKey,
         { userId: hostId, provider: "openai" }
       );
       if (keyRecord && keyRecord.isValid) {
@@ -137,7 +137,7 @@ export const generateAiSubmissions = internalAction({
           userKeyRecord = keyRecord;
         } catch {
           // Decryption failed — mark key invalid and fall back to default
-          await ctx.runMutation(internal.apiKeys.markKeyInvalid, {
+          await ctx.runMutation(internal.apiKeyQueries.markKeyInvalid, {
             keyId: keyRecord._id,
             error: "Failed to decrypt key — it may be corrupted",
           });
@@ -213,7 +213,7 @@ export const generateAiSubmissions = internalAction({
             );
             // Mark successful usage
             if (userKeyRecord) {
-              await ctx.runMutation(internal.apiKeys.markKeyUsed, {
+              await ctx.runMutation(internal.apiKeyQueries.markKeyUsed, {
                 keyId: userKeyRecord._id,
               });
             }
@@ -224,7 +224,7 @@ export const generateAiSubmissions = internalAction({
             // Mark the key invalid with a descriptive error
             if (userKeyRecord) {
               const errorMsg = classifyOpenAIError(err);
-              await ctx.runMutation(internal.apiKeys.markKeyInvalid, {
+              await ctx.runMutation(internal.apiKeyQueries.markKeyInvalid, {
                 keyId: userKeyRecord._id,
                 error: errorMsg,
               });
