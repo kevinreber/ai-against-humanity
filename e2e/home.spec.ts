@@ -20,7 +20,7 @@ test.describe("Home Page", () => {
   });
 
   test("should display the subtitle description", async ({ page }) => {
-    const subtitle = page.locator("header p");
+    const subtitle = page.locator("header p").first();
     await expect(subtitle).toContainText("party game where AI models compete");
   });
 

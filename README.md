@@ -1,25 +1,35 @@
 # AI Against Humanity
 
-A multiplayer card game where AI models compete with humans to create the funniest responses. Built with React Router, Convex, and OpenAI.
+A multiplayer card game inspired by Cards Against Humanity — where AI personas with distinct personalities compete to create the funniest responses to hilarious prompts. Watch AI models battle each other, vote on winners, or jump in and compete alongside them in real-time.
 
-## Features
+## Game Modes
 
-- **Multiplayer gameplay** — Humans and AI compete in real-time
-- **5 built-in AI personas** — Each with unique humor styles and personalities
-- **Custom AI personas** — Create your own AI personalities with custom behavior
-- **Bring Your Own Key (BYOK)** — Use your own OpenAI API key for more AI players and no rate limits
-- **Real-time sync** — Powered by Convex for instant game state updates
-- **AI judging** — Let AI pick the funniest response
-- **Response caching** — Reduces API costs by reusing responses for repeated prompts
-- **Rate limiting** — Upstash Redis-based sliding window to prevent cost overruns
+- **AI Battle Royale** — Watch AI models go head-to-head with zero human intervention
+- **Human vs AI** — Compete directly against AI opponents
+- **AI Judge** — Submit your responses and let an AI pick the winner
+- **Collaborative** — Team up with an AI partner against other teams
+
+## AI Personas
+
+Each AI opponent has a unique personality and humor style:
+
+| Persona | Style | Creativity |
+|---------|-------|------------|
+| Chaotic Carl | Absurd, random, surreal humor | 1.0 (High) |
+| Sophisticated Sophie | Witty, intellectual wordplay | 0.7 (Medium) |
+| Edgy Eddie | Dark humor, boundary-pushing | 0.9 (High) |
+| Wholesome Wendy | Clean, family-friendly fun | 0.5 (Medium) |
+| Literal Larry | Misses the joke, accidentally funny | 0.3 (Low) |
 
 ## Tech Stack
 
-- **Frontend**: React 19, React Router 7 (SSR), TailwindCSS 4
-- **Backend**: Convex (real-time database + server functions)
-- **AI**: OpenAI API (gpt-4o-mini)
-- **Rate Limiting**: Upstash Redis
-- **Deployment**: Vercel (frontend) + Convex Cloud (backend)
+- **React 19** + **React Router 7** — Server-rendered UI with nested routing
+- **Convex** — Real-time backend with automatic subscriptions (no WebSocket boilerplate)
+- **OpenAI API** — AI response generation with per-persona temperature tuning
+- **Tailwind CSS 4** — Neon-themed dark mode styling
+- **Upstash Redis** — Rate limiting (optional)
+- **Playwright** — End-to-end testing
+- **TypeScript** — Throughout
 
 ## Getting Started
 
@@ -27,36 +37,33 @@ A multiplayer card game where AI models compete with humans to create the funnie
 
 - Node.js 20+
 - A [Convex](https://convex.dev) account
-- An [OpenAI](https://platform.openai.com) API key
+- An [OpenAI API key](https://platform.openai.com)
 
-### Installation
+### Setup
 
 ```bash
 npm install
 ```
 
-### Environment Setup
+Create a `.env` file:
 
-1. Copy the example env file:
-   ```bash
-   cp .env.example .env
-   ```
+```
+VITE_CONVEX_URL=https://your-project.convex.cloud
+```
 
-2. Set `VITE_CONVEX_URL` in `.env` to your Convex deployment URL.
+Set backend secrets in the [Convex Dashboard](https://dashboard.convex.dev):
 
-3. In the **Convex Dashboard**, set these environment variables:
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `OPENAI_API_KEY` | Yes | Default OpenAI key for AI responses |
+| `UPSTASH_REDIS_URL` | No | Enables rate limiting |
+| `UPSTASH_REDIS_TOKEN` | No | Enables rate limiting |
+| `ENCRYPTION_KEY` | For BYOK | 32-byte hex key for encrypting user API keys |
 
-   | Variable | Required | Description |
-   |----------|----------|-------------|
-   | `OPENAI_API_KEY` | Yes | Default OpenAI key for AI responses |
-   | `UPSTASH_REDIS_URL` | No | Enables rate limiting |
-   | `UPSTASH_REDIS_TOKEN` | No | Enables rate limiting |
-   | `ENCRYPTION_KEY` | For BYOK | 32-byte hex key for encrypting user API keys |
-
-   Generate an encryption key:
-   ```bash
-   openssl rand -hex 32
-   ```
+Generate an encryption key:
+```bash
+openssl rand -hex 32
+```
 
 ### Development
 
@@ -64,7 +71,7 @@ npm install
 npm run dev
 ```
 
-Your application will be available at `http://localhost:5173`.
+The app will be available at `http://localhost:5173`.
 
 ## Custom API Credentials (BYOK)
 
@@ -113,61 +120,14 @@ Custom persona prompts are wrapped with a system-level instruction that:
 - Prevents prompt injection by always prefixing with game rules
 - Bounds temperature to 0.1–1.2
 
-## Built-in AI Personas
-
-| Persona | Style | Creativity |
-|---------|-------|------------|
-| Chaotic Carl | Absurd, random, unexpected | 1.0 (High) |
-| Sophisticated Sophie | Witty, intellectual wordplay | 0.7 (Medium) |
-| Edgy Eddie | Dark humor, boundary-pushing | 0.9 (High) |
-| Wholesome Wendy | Clean, family-friendly | 0.5 (Medium) |
-| Literal Larry | Misses the joke, accidentally funny | 0.3 (Low) |
-
-## Game Modes
-
-- **AI Battle Royale** — Watch AI models compete against each other
-- **Human vs AI** — Compete against AI opponents
-- **AI Judge** — AI evaluates your responses
-- **Collaborative** — Team up with AI against others
-
-## Project Structure
-
-```
-app/
-  routes/
-    home.tsx              # Landing page
-    games._index.tsx      # Game lobby list
-    games.new.tsx         # Create game (with custom persona selection)
-    games.$gameId.tsx     # Active game page
-    settings.tsx          # API keys + custom persona management
-  components/
-    GameBoard.tsx         # Main game UI
-    PlayerList.tsx        # Player list (supports custom persona names)
-    ScoreBoard.tsx        # Scores and results
-    Card.tsx              # Card component
-  lib/
-    constants.ts          # Persona metadata, game modes, defaults
-
-convex/
-  schema.ts              # Database schema (users, games, cards, apiKeys, customPersonas)
-  ai.ts                  # AI generation + judging (BYOK support)
-  apiKeys.ts             # API key CRUD (encrypt, validate, store)
-  customPersonas.ts      # Custom persona CRUD
-  encryption.ts          # AES-256-GCM encryption utilities
-  games.ts               # Game lifecycle mutations
-  rounds.ts              # Round management
-  users.ts               # User management
-  rateLimit.ts           # Rate limiting helpers
-  seed.ts                # Database seeding
-```
-
-## Building for Production
+### Production
 
 ```bash
 npm run build
+npm run start
 ```
 
-### Docker
+Or with Docker:
 
 ```bash
 docker build -t ai-against-humanity .
@@ -177,11 +137,36 @@ docker run -p 3000:3000 ai-against-humanity
 ## Testing
 
 ```bash
-npm run test          # Run e2e tests
-npm run test:headed   # Run with browser visible
-npm run test:debug    # Debug mode
+npm test                # Run all E2E tests
+npm run test:unit       # Run unit tests (encryption, etc.)
+npm run test:ui         # Playwright UI mode
+npm run test:headed     # Tests with visible browser
+npm run test:debug      # Debug mode
 ```
 
----
+## Project Structure
 
-Built with React Router, Convex, and AI.
+```
+app/
+├── components/         # Reusable UI (GameBoard, PlayerList, Card, etc.)
+├── routes/             # Pages — home, game creation, lobby, active game
+│   ├── home.tsx
+│   ├── games._index.tsx
+│   ├── games.new.tsx
+│   ├── games.$gameId.tsx
+│   └── settings.tsx    # API keys + custom persona management
+└── lib/                # Utilities, constants, helpers
+convex/
+├── schema.ts           # Database schema (users, games, cards, apiKeys, customPersonas)
+├── games.ts            # Game logic (mutations & queries)
+├── rounds.ts           # Round management
+├── ai.ts               # AI response generation & caching (Node.js actions)
+├── aiQueries.ts        # AI-related queries & mutations (V8 runtime)
+├── apiKeys.ts          # API key CRUD (encrypt, validate, store)
+├── customPersonas.ts   # Custom persona CRUD
+├── encryption.ts       # AES-256-GCM encryption utilities
+├── users.ts            # User management
+├── rateLimit.ts        # Rate limiting helpers
+└── seed.ts             # Database seeding
+e2e/                    # Playwright test specs
+```
