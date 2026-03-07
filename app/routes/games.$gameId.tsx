@@ -28,7 +28,10 @@ export default function GamePageWrapper() {
     <ErrorBoundary
       fallback={
         <div className="container mx-auto px-4 py-12 text-center">
-          <p className="text-red-400">Game not found</p>
+          <p className="text-red-400">Failed to load game</p>
+          <p className="text-gray-500 text-sm mt-2">
+            The game may have ended or there was a connection error.
+          </p>
           <Link to="/games" className="btn-neon-cyan mt-4 inline-block">
             Back to Games
           </Link>
@@ -139,9 +142,12 @@ function GamePage() {
   if (gameState === null) {
     return (
       <div className="container mx-auto px-4 py-12 text-center">
-        <p className="text-red-400">Game not found</p>
+        <p className="text-red-400 text-lg font-bold">Game not found</p>
+        <p className="text-gray-500 text-sm mt-2">
+          This game may have ended or been removed.
+        </p>
         <Link to="/games" className="btn-neon-cyan mt-4 inline-block">
-          Back to Games
+          Browse Open Games
         </Link>
       </div>
     );
