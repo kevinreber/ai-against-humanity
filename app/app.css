@@ -147,6 +147,184 @@ body {
   animation: pulse-glow 2s ease-in-out infinite;
 }
 
+/* ===== Landing Page Animations ===== */
+
+/* Hero entrance - staggered fade up */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-up {
+  opacity: 0;
+  animation: fade-up 0.8s ease-out forwards;
+}
+
+.animate-delay-1 { animation-delay: 0.15s; }
+.animate-delay-2 { animation-delay: 0.3s; }
+.animate-delay-3 { animation-delay: 0.45s; }
+.animate-delay-4 { animation-delay: 0.6s; }
+.animate-delay-5 { animation-delay: 0.75s; }
+
+/* Glitch effect for title */
+@keyframes glitch {
+  0%, 100% { text-shadow: 0 0 5px currentColor, 0 0 10px currentColor, 0 0 20px currentColor; }
+  10% { text-shadow: -3px 0 var(--color-neon-cyan), 3px 0 var(--color-neon-pink); }
+  20% { text-shadow: 3px 0 var(--color-neon-pink), -3px 0 var(--color-neon-cyan); }
+  30% { text-shadow: 0 0 5px currentColor, 0 0 10px currentColor, 0 0 20px currentColor; }
+}
+
+.animate-glitch:hover {
+  animation: glitch 0.4s ease-in-out;
+}
+
+/* Scroll reveal */
+@keyframes reveal-up {
+  from {
+    opacity: 0;
+    transform: translateY(40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.scroll-reveal {
+  opacity: 0;
+}
+
+.scroll-reveal.revealed {
+  animation: reveal-up 0.6s ease-out forwards;
+}
+
+/* Staggered grid children */
+.stagger-grid.revealed > * {
+  opacity: 0;
+  animation: reveal-up 0.5s ease-out forwards;
+}
+
+.stagger-grid.revealed > *:nth-child(1) { animation-delay: 0s; }
+.stagger-grid.revealed > *:nth-child(2) { animation-delay: 0.1s; }
+.stagger-grid.revealed > *:nth-child(3) { animation-delay: 0.2s; }
+.stagger-grid.revealed > *:nth-child(4) { animation-delay: 0.3s; }
+.stagger-grid.revealed > *:nth-child(5) { animation-delay: 0.4s; }
+
+/* Floating particles */
+@keyframes float-particle {
+  0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.3; }
+  25% { transform: translate(20px, -30px) scale(1.2); opacity: 0.6; }
+  50% { transform: translate(-10px, -60px) scale(0.8); opacity: 0.4; }
+  75% { transform: translate(15px, -40px) scale(1.1); opacity: 0.5; }
+}
+
+.particle {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  pointer-events: none;
+  animation: float-particle linear infinite;
+}
+
+/* Card flip for demo */
+.card-flip-container {
+  perspective: 1000px;
+}
+
+.card-flip-inner {
+  transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  transform-style: preserve-3d;
+}
+
+.card-flip-container:hover .card-flip-inner,
+.card-flip-inner.flipped {
+  transform: rotateY(180deg);
+}
+
+.card-flip-front,
+.card-flip-back {
+  backface-visibility: hidden;
+}
+
+.card-flip-back {
+  transform: rotateY(180deg);
+}
+
+/* Typewriter cursor */
+@keyframes blink-cursor {
+  0%, 100% { border-color: transparent; }
+  50% { border-color: var(--color-neon-cyan); }
+}
+
+.typewriter-cursor {
+  border-right: 2px solid var(--color-neon-cyan);
+  animation: blink-cursor 0.8s step-end infinite;
+}
+
+/* Neon border pulse on cards */
+@keyframes border-glow {
+  0%, 100% { border-color: rgba(0, 255, 255, 0.3); }
+  50% { border-color: rgba(0, 255, 255, 0.8); }
+}
+
+.animate-border-glow {
+  animation: border-glow 2s ease-in-out infinite;
+}
+
+/* Hero background grid */
+@keyframes grid-scroll {
+  from { transform: translateY(0); }
+  to { transform: translateY(50px); }
+}
+
+.hero-grid {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  mask-image: linear-gradient(to bottom, transparent, black 20%, black 80%, transparent);
+}
+
+.hero-grid::before {
+  content: '';
+  position: absolute;
+  inset: -50px;
+  background-image:
+    linear-gradient(rgba(0, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 50px 50px;
+  animation: grid-scroll 4s linear infinite;
+}
+
+/* Pulse ring for CTA */
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 currentColor; }
+  70% { box-shadow: 0 0 0 10px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+.btn-neon-pink:hover,
+.btn-neon-cyan:hover {
+  animation: pulse-ring 1.5s ease-out infinite;
+}
+
+/* Counter animation */
+@keyframes count-up {
+  from { opacity: 0; transform: scale(0.5); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.animate-count-up {
+  animation: count-up 0.4s ease-out forwards;
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 8px;
