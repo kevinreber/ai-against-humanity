@@ -18,12 +18,16 @@ test.describe("Game Page - Loading States", () => {
         .waitFor({ state: "visible", timeout: 3000 })
         .then(() => "not-found"),
       page
+        .locator('text="Failed to load game"')
+        .waitFor({ state: "visible", timeout: 3000 })
+        .then(() => "failed"),
+      page
         .locator('text="Invalid game ID"')
         .waitFor({ state: "visible", timeout: 3000 })
         .then(() => "invalid"),
     ]).catch(() => "timeout");
 
-    expect(["loading", "not-found", "invalid", "timeout"]).toContain(
+    expect(["loading", "not-found", "failed", "invalid", "timeout"]).toContain(
       loadingOrError
     );
   });
@@ -38,6 +42,7 @@ test.describe("Game Page - Loading States", () => {
     const hasError =
       (await page.locator('text="Game not found"').isVisible()) ||
       (await page.locator('text="Invalid game ID"').isVisible()) ||
+      (await page.locator('text="Failed to load game"').isVisible()) ||
       (await page.locator(".ai-typing").isVisible());
 
     expect(hasError).toBeTruthy();
