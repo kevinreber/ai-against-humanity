@@ -1,6 +1,6 @@
 import { query, mutation } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { MAX_AI_PLAYERS_PER_GAME, MAX_AI_PLAYERS_WITH_OWN_KEY } from "./gameConstants";
 
 // Generate a random 6-character invite code
@@ -193,29 +193,41 @@ export const startGame = mutation({
   args: { gameId: v.id("games") },
   handler: async (ctx, { gameId }) => {
     const game = await ctx.db.get(gameId);
-    if (!game) throw new Error("Game not found");
-    if (game.status !== "lobby") throw new Error("Game already started");
+    if (!game) throw new ConvexError("Game not found");
+    if (game.status !== "lobby") throw new ConvexError("Game already started");
 
     const players = await ctx.db
       .query("gamePlayers")
       .withIndex("by_game", (q) => q.eq("gameId", gameId))
       .collect();
 
-    if (players.length < 2) throw new Error("Need at least 2 players");
+    if (players.length < 2) throw new ConvexError("Need at least 2 players");
 
-    // Set first player as judge
-    await ctx.db.patch(players[0]._id, { isJudge: true });
-
-    // Update game status
-    await ctx.db.patch(gameId, { status: "playing", currentRound: 1 });
-
-    // Get a random prompt card
+    // Validate cards exist before making any changes
     const promptCards = await ctx.db
       .query("cards")
       .withIndex("by_type", (q) => q.eq("type", "prompt"))
       .collect();
 
-    if (promptCards.length === 0) throw new Error("No prompt cards available");
+    if (promptCards.length === 0) {
+      throw new ConvexError(
+        "No cards available. Please seed the database from the home page first."
+      );
+    }
+
+    const responseCards = await ctx.db
+      .query("cards")
+      .withIndex("by_type", (q) => q.eq("type", "response"))
+      .collect();
+
+    // Set first player as judge
+    const judgePlayerId = players[0]._id;
+    await ctx.db.patch(judgePlayerId, { isJudge: true });
+
+    // Update game status
+    await ctx.db.patch(gameId, { status: "playing", currentRound: 1 });
+
+    // Get a random prompt card
     const randomPrompt =
       promptCards[Math.floor(Math.random() * promptCards.length)];
 
@@ -224,7 +236,7 @@ export const startGame = mutation({
       gameId,
       roundNumber: 1,
       promptCardId: randomPrompt._id,
-      judgePlayerId: players[0]._id,
+      judgePlayerId,
       status: "submitting",
     });
 
@@ -235,16 +247,11 @@ export const startGame = mutation({
     });
 
     // Deal cards to non-judge players
-    const responseCards = await ctx.db
-      .query("cards")
-      .withIndex("by_type", (q) => q.eq("type", "response"))
-      .collect();
-
     const shuffled = [...responseCards].sort(() => Math.random() - 0.5);
     let cardIndex = 0;
 
     for (const player of players) {
-      if (!player.isJudge) {
+      if (player._id !== judgePlayerId) {
         const hand = shuffled.slice(cardIndex, cardIndex + 7).map((c) => c._id);
         await ctx.db.patch(player._id, { hand });
         cardIndex += 7;
