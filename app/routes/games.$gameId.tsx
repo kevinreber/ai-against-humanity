@@ -29,7 +29,10 @@ export default function GamePageWrapper() {
     <ErrorBoundary
       fallback={
         <div className="container mx-auto px-4 py-12 text-center">
-          <p className="text-red-400">Game not found</p>
+          <p className="text-red-400">Failed to load game</p>
+          <p className="text-gray-500 text-sm mt-2">
+            The game may have ended or there was a connection error.
+          </p>
           <Link to="/games" className="btn-neon-cyan mt-4 inline-block">
             Back to Games
           </Link>
@@ -64,12 +67,6 @@ function GamePage() {
 
   // Check host's API key status (must be before conditional returns to satisfy Rules of Hooks)
   const isHost = gameState?.game?.hostId === currentUserId;
-  const hostApiKeys = useQuery(
-    api.apiKeyQueries.getMyApiKeys,
-    gameState && currentUserId && isHost
-      ? { userId: gameState.game.hostId }
-      : "skip"
-  );
 
   // Convex mutations
   const startGame = useMutation(api.games.startGame);
@@ -141,9 +138,12 @@ function GamePage() {
   if (gameState === null) {
     return (
       <div className="container mx-auto px-4 py-12 text-center">
-        <p className="text-red-400">Game not found</p>
+        <p className="text-red-400 text-lg font-bold">Game not found</p>
+        <p className="text-gray-500 text-sm mt-2">
+          This game may have ended or been removed.
+        </p>
         <Link to="/games" className="btn-neon-cyan mt-4 inline-block">
-          Back to Games
+          Browse Open Games
         </Link>
       </div>
     );
@@ -153,10 +153,6 @@ function GamePage() {
   const currentPlayer = players.find((p) => p.userId === currentUserId);
   const isJudge = currentPlayer?._id === currentRound?.judgePlayerId;
   const hasSubmitted = submissions?.some((s) => s.playerId === currentPlayer?._id);
-
-  const apiKeyWarning = isHost && hostApiKeys?.some((k) => !k.isValid && k.lastError)
-    ? hostApiKeys.find((k) => !k.isValid && k.lastError)
-    : null;
 
   // Get cards for current player's hand
   const playerHand = currentPlayer?.hand?.map((cardId) => ({
@@ -329,22 +325,10 @@ function GamePage() {
       </header>
 
       {/* API Key Warning Banner (only shown to host) */}
-      {apiKeyWarning && (
-        <div className="container mx-auto px-4 mb-4">
-          <div className="p-3 rounded-lg bg-red-900/20 border border-red-500/50 text-sm flex items-center justify-between">
-            <div>
-              <span className="text-red-400 font-bold">API Key Issue: </span>
-              <span className="text-red-300">{apiKeyWarning.lastError}</span>
-              <span className="text-red-500 ml-1">— Using default key as fallback.</span>
-            </div>
-            <Link
-              to="/settings"
-              className="text-xs px-3 py-1 rounded border border-red-500 text-red-400 hover:bg-red-900/30 transition-colors whitespace-nowrap ml-4"
-            >
-              Fix in Settings
-            </Link>
-          </div>
-        </div>
+      {isHost && (
+        <ErrorBoundary>
+          <ApiKeyWarning hostId={game.hostId} />
+        </ErrorBoundary>
       )}
 
       {/* Main Content */}
@@ -370,6 +354,30 @@ function GamePage() {
             />
           </main>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function ApiKeyWarning({ hostId }: { hostId: Id<"users"> }) {
+  const hostApiKeys = useQuery(api.apiKeyQueries.getMyApiKeys, { userId: hostId });
+  const warning = hostApiKeys?.find((k) => !k.isValid && k.lastError);
+  if (!warning) return null;
+
+  return (
+    <div className="container mx-auto px-4 mb-4">
+      <div className="p-3 rounded-lg bg-red-900/20 border border-red-500/50 text-sm flex items-center justify-between">
+        <div>
+          <span className="text-red-400 font-bold">API Key Issue: </span>
+          <span className="text-red-300">{warning.lastError}</span>
+          <span className="text-red-500 ml-1">— Using default key as fallback.</span>
+        </div>
+        <Link
+          to="/settings"
+          className="text-xs px-3 py-1 rounded border border-red-500 text-red-400 hover:bg-red-900/30 transition-colors whitespace-nowrap ml-4"
+        >
+          Fix in Settings
+        </Link>
       </div>
     </div>
   );

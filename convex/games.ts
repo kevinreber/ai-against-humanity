@@ -62,18 +62,23 @@ export const listLobbies = query({
       .withIndex("by_status", (q) => q.eq("status", "lobby"))
       .collect();
 
-    // Get player counts for each game
-    const gamesWithCounts = await Promise.all(
+    // Get player counts and host info for each game
+    const gamesWithDetails = await Promise.all(
       games.map(async (game) => {
         const players = await ctx.db
           .query("gamePlayers")
           .withIndex("by_game", (q) => q.eq("gameId", game._id))
           .collect();
-        return { ...game, playerCount: players.length };
+        const host = await ctx.db.get(game.hostId);
+        return {
+          ...game,
+          playerCount: players.length,
+          hostName: host?.username ?? "Unknown",
+        };
       })
     );
 
-    return gamesWithCounts;
+    return gamesWithDetails;
   },
 });
 

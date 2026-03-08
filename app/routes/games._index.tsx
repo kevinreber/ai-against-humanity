@@ -2,6 +2,17 @@ import { Link } from "react-router";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 
+function formatTimeAgo(timestamp: number): string {
+  const seconds = Math.floor((Date.now() - timestamp) / 1000);
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
 export function meta() {
   return [
     { title: "Games | AI Against Humanity" },
@@ -96,15 +107,26 @@ export default function GamesIndex() {
                     {game.playerCount}/{game.maxPlayers} players
                   </span>
                 </div>
-                <div className="mb-4">
+                <div className="mb-2">
+                  <p className="text-sm text-gray-300">
+                    Hosted by{" "}
+                    <span className="text-[--color-neon-pink] font-medium">
+                      {game.hostName}
+                    </span>
+                  </p>
                   <p className="text-sm text-gray-400">
                     First to {game.pointsToWin} points
                   </p>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-gray-500 font-mono">
-                    Code: {game.inviteCode}
-                  </span>
+                  <div>
+                    <span className="text-xs text-gray-500 font-mono">
+                      Code: {game.inviteCode}
+                    </span>
+                    <span className="text-xs text-gray-600 ml-2">
+                      {formatTimeAgo(game._creationTime)}
+                    </span>
+                  </div>
                   <Link
                     to={`/games/${game._id}`}
                     className="text-sm font-bold text-[--color-neon-cyan] hover:underline"
