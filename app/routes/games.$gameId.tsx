@@ -7,6 +7,7 @@ import { PlayerList } from "../components/PlayerList";
 import { ScoreBoard, GameResults } from "../components/ScoreBoard";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { useState, useEffect } from "react";
+import { ConvexError } from "convex/values";
 import { cn } from "../lib/utils";
 
 // Basic format check for Convex IDs - just ensure it's a non-empty
@@ -46,6 +47,7 @@ export default function GamePageWrapper() {
 function GamePage() {
   const { gameId } = useParams();
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [startError, setStartError] = useState<string | null>(null);
 
   // Validate gameId format before querying
   const isValidId = gameId ? isValidConvexId(gameId) : false;
@@ -236,16 +238,32 @@ function GamePage() {
 
         <div className="text-center">
           {isHost ? (
-            <button
-              onClick={() => startGame({ gameId: game._id })}
-              disabled={players.length < 2}
-              className={cn(
-                "btn-neon-green",
-                players.length < 2 && "opacity-50 cursor-not-allowed"
+            <>
+              <button
+                onClick={async () => {
+                  setStartError(null);
+                  try {
+                    await startGame({ gameId: game._id });
+                  } catch (err) {
+                    const message =
+                      err instanceof ConvexError
+                        ? (err.data as string)
+                        : "Failed to start game. Please try again.";
+                    setStartError(message);
+                  }
+                }}
+                disabled={players.length < 2}
+                className={cn(
+                  "btn-neon-green",
+                  players.length < 2 && "opacity-50 cursor-not-allowed"
+                )}
+              >
+                {players.length < 2 ? "Need at least 2 players" : "Start Game"}
+              </button>
+              {startError && (
+                <p className="text-red-400 text-sm mt-3">{startError}</p>
               )}
-            >
-              {players.length < 2 ? "Need at least 2 players" : "Start Game"}
-            </button>
+            </>
           ) : (
             <p className="text-gray-400">Waiting for host to start the game...</p>
           )}

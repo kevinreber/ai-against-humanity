@@ -29,6 +29,10 @@ jobs:
         run: npx playwright install --with-deps
 
       - name: Generate Convex types
+        # codegen needs a valid deploy key; skip gracefully in CI when
+        # the secret is missing — the checked-in convex/_generated/ files
+        # are used as a fallback.
+        if: ${{ secrets.CONVEX_DEPLOY_KEY != '' }}
         run: npx convex codegen
         env:
           CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
