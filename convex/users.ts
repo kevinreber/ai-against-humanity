@@ -98,6 +98,16 @@ export const updateUserStats = mutation({
   },
 });
 
+// Feature 9: Update avatar
+export const updateAvatar = mutation({
+  args: { userId: v.id("users"), avatar: v.string() },
+  handler: async (ctx, { userId, avatar }) => {
+    const user = await ctx.db.get(userId);
+    if (!user) throw new Error("User not found");
+    await ctx.db.patch(userId, { avatar });
+  },
+});
+
 // Query: Get leaderboard
 export const getLeaderboard = query({
   args: { limit: v.optional(v.number()) },

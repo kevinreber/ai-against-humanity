@@ -71,3 +71,31 @@ export const DEFAULT_GAME_SETTINGS = {
   pointsToWin: 7,
   turnTimeoutSeconds: 60,
 };
+
+// Feature 6: Theme modifiers for themed rounds
+export const THEME_MODIFIERS = [
+  "Answers must rhyme",
+  "Respond as a haiku (5-7-5)",
+  "Answer in exactly 3 words",
+  "Respond like a movie trailer narrator",
+  "Answer as if you're a time traveler from the year 3000",
+  "Respond with a question instead of an answer",
+  "Answer like a nature documentary narrator",
+  "Respond as a fortune cookie",
+];
+
+// Feature 9: Avatar options
+export const AVATAR_OPTIONS = [
+  "😎", "🤠", "🧐", "🥸", "🤩", "😈", "👽", "🤖",
+  "🦊", "🐉", "🦄", "🐙", "🎭", "🧙", "🦹", "👻",
+  "🎪", "🔮", "🌟", "💀", "🃏", "🎯", "🏆", "⚡",
+];
+
+// Feature 9: Title thresholds
+export const TITLE_THRESHOLDS: Record<string, { minWins: number; color: string }> = {
+  "Legendary": { minWins: 50, color: "var(--color-neon-pink)" },
+  "Champion": { minWins: 25, color: "var(--color-neon-green)" },
+  "Veteran": { minWins: 10, color: "var(--color-neon-cyan)" },
+  "Regular": { minWins: 5, color: "var(--color-neon-purple)" },
+  "Winner": { minWins: 1, color: "gray" },
+};

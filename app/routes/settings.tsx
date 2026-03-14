@@ -4,6 +4,7 @@ import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { cn } from "../lib/utils";
+import { AVATAR_OPTIONS, TITLE_THRESHOLDS } from "../lib/constants";
 
 export function meta() {
   return [
@@ -71,8 +72,12 @@ export default function Settings() {
       </div>
 
       <div className="space-y-12">
+        <ProfileSection userId={userId as Id<"users">} user={user} />
         <ApiKeySection userId={userId as Id<"users">} />
         <CustomPersonaSection userId={userId as Id<"users">} />
+        <PersonaMarketplaceSection userId={userId as Id<"users">} />
+        <CardPackSection userId={userId as Id<"users">} />
+        <HighlightsSection userId={userId as Id<"users">} />
       </div>
     </div>
   );
@@ -553,6 +558,439 @@ function CustomPersonaSection({ userId }: { userId: Id<"users"> }) {
           </div>
         </div>
       )}
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Feature 9: Profile — Avatar & Title
+// ---------------------------------------------------------------------------
+function ProfileSection({ userId, user }: { userId: Id<"users">; user: any }) {
+  const updateAvatar = useMutation(api.users.updateAvatar);
+
+  return (
+    <section>
+      <h2 className="text-xl font-bold mb-1">
+        <span className="text-[--color-neon-pink]">Profile</span>
+      </h2>
+      <p className="text-sm text-gray-400 mb-6">
+        Customize your avatar and view your earned title.
+      </p>
+
+      <div className="game-card">
+        <div className="flex items-center gap-4 mb-4">
+          <div className="w-16 h-16 rounded-full bg-[--color-neon-cyan]/20 flex items-center justify-center text-3xl">
+            {user?.avatar || user?.username?.[0]?.toUpperCase() || "?"}
+          </div>
+          <div>
+            <div className="font-bold text-lg">{user?.username}</div>
+            {user?.title && (
+              <span
+                className="text-xs px-2 py-1 rounded font-bold uppercase"
+                style={{
+                  color: TITLE_THRESHOLDS[user.title]?.color ?? "gray",
+                  backgroundColor: `${TITLE_THRESHOLDS[user.title]?.color ?? "gray"}20`,
+                }}
+              >
+                {user.title}
+              </span>
+            )}
+            <div className="text-xs text-gray-500 mt-1">
+              {user?.gamesWon ?? 0} wins / {user?.gamesPlayed ?? 0} games
+            </div>
+          </div>
+        </div>
+
+        <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">
+          Choose Avatar
+        </label>
+        <div className="flex flex-wrap gap-2">
+          {AVATAR_OPTIONS.map((av) => (
+            <button
+              key={av}
+              type="button"
+              onClick={() => updateAvatar({ userId, avatar: av })}
+              className={cn(
+                "w-10 h-10 rounded-lg border-2 text-xl flex items-center justify-center transition-all",
+                user?.avatar === av
+                  ? "border-[--color-neon-cyan] bg-[--color-neon-cyan]/20"
+                  : "border-gray-700 hover:border-gray-600"
+              )}
+            >
+              {av}
+            </button>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Feature 5: Persona Marketplace — browse and "install" public personas
+// ---------------------------------------------------------------------------
+function PersonaMarketplaceSection({ userId }: { userId: Id<"users"> }) {
+  const publicPersonas = useQuery(api.customPersonas.getPublicPersonas);
+  const myPersonas = useQuery(api.customPersonas.getMyPersonas, { userId });
+  const myPersonaIds = new Set(myPersonas?.map((p) => p._id) ?? []);
+
+  if (!publicPersonas || publicPersonas.length === 0) return null;
+
+  // Filter out user's own personas
+  const marketplacePersonas = publicPersonas.filter(
+    (p) => p.creatorId !== userId
+  );
+
+  if (marketplacePersonas.length === 0) return null;
+
+  return (
+    <section>
+      <h2 className="text-xl font-bold mb-1">
+        <span className="text-[--color-neon-cyan]">Persona Marketplace</span>
+      </h2>
+      <p className="text-sm text-gray-400 mb-6">
+        Browse public personas created by other players. Use them in your games!
+      </p>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        {marketplacePersonas.map((persona) => (
+          <div key={persona._id} className="game-card">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-xl">{persona.emoji}</span>
+              <span className="font-bold text-[--color-neon-cyan]">
+                {persona.name}
+              </span>
+            </div>
+            <p className="text-xs text-gray-500 mb-2">{persona.personality}</p>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-gray-600">
+                Creativity: {persona.temperature}
+              </span>
+              <span className="text-xs text-[--color-neon-green]">
+                Available in game lobby
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Feature 4: Card Pack Creator
+// ---------------------------------------------------------------------------
+function CardPackSection({ userId }: { userId: Id<"users"> }) {
+  const myPacks = useQuery(api.cardPacks.getMyPacks, { userId });
+  const createPack = useMutation(api.cardPacks.createPack);
+  const addCard = useMutation(api.cardPacks.addCard);
+  const deleteCard = useMutation(api.cardPacks.deleteCard);
+  const deletePack = useMutation(api.cardPacks.deletePack);
+
+  const [isCreating, setIsCreating] = useState(false);
+  const [packName, setPackName] = useState("");
+  const [packDesc, setPackDesc] = useState("");
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  // Add card state
+  const [addingToPackId, setAddingToPackId] = useState<string | null>(null);
+  const [newCardText, setNewCardText] = useState("");
+  const [newCardType, setNewCardType] = useState<"prompt" | "response">("response");
+
+  const handleCreatePack = async () => {
+    setError("");
+    setSuccess("");
+    try {
+      await createPack({
+        name: packName,
+        description: packDesc,
+        creatorId: userId,
+      });
+      setSuccess(`Pack "${packName}" created!`);
+      setPackName("");
+      setPackDesc("");
+      setIsCreating(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create pack");
+    }
+  };
+
+  const handleAddCard = async (packId: string) => {
+    setError("");
+    try {
+      await addCard({
+        packId: packId as Id<"cardPacks">,
+        type: newCardType,
+        text: newCardText,
+        userId,
+      });
+      setNewCardText("");
+      setSuccess("Card added!");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to add card");
+    }
+  };
+
+  return (
+    <section>
+      <h2 className="text-xl font-bold mb-1">
+        <span className="text-[--color-neon-green]">Card Packs</span>
+      </h2>
+      <p className="text-sm text-gray-400 mb-6">
+        Create custom card packs with your own prompts and responses.
+      </p>
+
+      {error && (
+        <div className="p-3 rounded-lg bg-red-900/20 border border-red-500 text-red-400 text-sm mb-4">
+          {error}
+        </div>
+      )}
+      {success && (
+        <div className="p-3 rounded-lg bg-green-900/20 border border-green-500 text-green-400 text-sm mb-4">
+          {success}
+        </div>
+      )}
+
+      {/* Existing packs */}
+      {myPacks && myPacks.length > 0 && (
+        <div className="space-y-4 mb-6">
+          {myPacks.map((pack) => (
+            <div key={pack._id} className="game-card">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <span className="font-bold text-[--color-neon-green]">
+                    {pack.name}
+                  </span>
+                  <span className="text-xs text-gray-500 ml-2">
+                    {pack.cardCount} cards
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() =>
+                      setAddingToPackId(
+                        addingToPackId === pack._id ? null : pack._id
+                      )
+                    }
+                    className="text-xs text-[--color-neon-cyan] hover:underline"
+                  >
+                    + Add Card
+                  </button>
+                  <button
+                    onClick={() => deletePack({ packId: pack._id as Id<"cardPacks">, userId })}
+                    className="text-xs text-red-400 hover:text-red-300"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+              <p className="text-xs text-gray-500 mb-2">{pack.description}</p>
+
+              {/* Cards in pack */}
+              {pack.cards && pack.cards.length > 0 && (
+                <div className="space-y-1 mb-2">
+                  {pack.cards.map((card: any) => (
+                    <div
+                      key={card._id}
+                      className="flex items-center justify-between text-xs p-1.5 rounded bg-[--color-dark-bg]"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={cn(
+                            "px-1 rounded font-bold uppercase",
+                            card.type === "prompt"
+                              ? "text-[--color-neon-pink]"
+                              : "text-[--color-neon-cyan]"
+                          )}
+                        >
+                          {card.type[0]}
+                        </span>
+                        <span className="text-gray-300">{card.text}</span>
+                      </div>
+                      <button
+                        onClick={() => deleteCard({ cardId: card._id as Id<"cards">, userId })}
+                        className="text-red-500 hover:text-red-400 ml-2"
+                      >
+                        x
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Add card form */}
+              {addingToPackId === pack._id && (
+                <div className="mt-3 p-3 rounded-lg bg-[--color-dark-bg] border border-gray-800">
+                  <div className="flex gap-2 mb-2">
+                    {(["prompt", "response"] as const).map((t) => (
+                      <button
+                        key={t}
+                        onClick={() => setNewCardType(t)}
+                        className={cn(
+                          "text-xs px-3 py-1 rounded border",
+                          newCardType === t
+                            ? t === "prompt"
+                              ? "border-[--color-neon-pink] text-[--color-neon-pink]"
+                              : "border-[--color-neon-cyan] text-[--color-neon-cyan]"
+                            : "border-gray-700 text-gray-500"
+                        )}
+                      >
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={newCardText}
+                      onChange={(e) => setNewCardText(e.target.value)}
+                      placeholder={
+                        newCardType === "prompt"
+                          ? "Enter prompt (use _______ for blank)"
+                          : "Enter response text"
+                      }
+                      className="flex-1 bg-[--color-dark-card] border border-gray-700 rounded px-3 py-2 text-sm focus:border-[--color-neon-green] focus:outline-none"
+                      maxLength={200}
+                    />
+                    <button
+                      onClick={() => handleAddCard(pack._id)}
+                      className="text-xs px-3 py-2 rounded border border-[--color-neon-green] text-[--color-neon-green] hover:bg-[--color-neon-green]/20"
+                    >
+                      Add
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Create new pack */}
+      {!isCreating ? (
+        <button
+          onClick={() => setIsCreating(true)}
+          className="w-full text-center px-6 py-3 rounded-lg font-bold uppercase tracking-wider transition-all duration-300 cursor-pointer bg-transparent border-2 border-[--color-neon-green] text-[--color-neon-green] hover:bg-[--color-neon-green]/30"
+        >
+          + Create New Card Pack
+        </button>
+      ) : (
+        <div className="game-card space-y-4">
+          <h3 className="font-bold text-[--color-neon-green]">New Card Pack</h3>
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">
+              Pack Name
+            </label>
+            <input
+              type="text"
+              value={packName}
+              onChange={(e) => setPackName(e.target.value)}
+              placeholder="e.g. Office Humor"
+              className="w-full bg-[--color-dark-bg] border border-gray-700 rounded-lg px-4 py-3 focus:border-[--color-neon-green] focus:outline-none"
+              maxLength={50}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">
+              Description
+            </label>
+            <input
+              type="text"
+              value={packDesc}
+              onChange={(e) => setPackDesc(e.target.value)}
+              placeholder="e.g. Cards about office life and corporate chaos"
+              className="w-full bg-[--color-dark-bg] border border-gray-700 rounded-lg px-4 py-3 focus:border-[--color-neon-green] focus:outline-none"
+              maxLength={200}
+            />
+          </div>
+          <div className="flex gap-3">
+            <button onClick={handleCreatePack} className="btn-neon-green flex-1 text-center">
+              Create Pack
+            </button>
+            <button
+              onClick={() => {
+                setIsCreating(false);
+                setPackName("");
+                setPackDesc("");
+              }}
+              className="px-6 py-3 rounded-lg border-2 border-gray-700 text-gray-500 hover:border-gray-600 transition-all font-bold uppercase tracking-wider"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Feature 7: Highlights Viewer
+// ---------------------------------------------------------------------------
+function HighlightsSection({ userId }: { userId: Id<"users"> }) {
+  const highlights = useQuery(api.highlights.getMyHighlights, { userId });
+  const deleteHighlight = useMutation(api.highlights.deleteHighlight);
+
+  if (!highlights || highlights.length === 0) {
+    return (
+      <section>
+        <h2 className="text-xl font-bold mb-1">
+          <span className="text-orange-400">Saved Highlights</span>
+        </h2>
+        <p className="text-sm text-gray-400 mb-6">
+          Save your favorite rounds during gameplay to view them here.
+        </p>
+        <div className="game-card text-center text-gray-500 text-sm">
+          No highlights saved yet. Play a game and save your best rounds!
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section>
+      <h2 className="text-xl font-bold mb-1">
+        <span className="text-orange-400">Saved Highlights</span>
+      </h2>
+      <p className="text-sm text-gray-400 mb-6">
+        Your favorite rounds from past games.
+      </p>
+      <div className="space-y-3">
+        {highlights.map((h) => (
+          <div key={h._id} className="game-card">
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <div className="text-xs text-gray-500 mb-1">
+                  {new Date(h.savedAt).toLocaleDateString()}
+                </div>
+                <div className="text-sm font-bold text-[--color-neon-pink] mb-1">
+                  &ldquo;{h.promptText}&rdquo;
+                </div>
+                <div className="text-sm text-[--color-neon-cyan]">
+                  Winner ({h.winnerName}): &ldquo;{h.winningResponse}&rdquo;
+                </div>
+                {h.roastCommentary && (
+                  <div className="text-xs text-orange-400 mt-1 italic">
+                    Commentator: &ldquo;{h.roastCommentary}&rdquo;
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={() =>
+                  deleteHighlight({
+                    highlightId: h._id as Id<"roundHighlights">,
+                    userId,
+                  })
+                }
+                className="text-xs text-red-400 hover:text-red-300 ml-2"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
     </section>
   );
 }

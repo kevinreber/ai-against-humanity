@@ -89,14 +89,17 @@ export const createGame = mutation({
     gameMode: v.string(),
     maxPlayers: v.number(),
     pointsToWin: v.number(),
+    ttsEnabled: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const inviteCode = generateInviteCode();
+    const { ttsEnabled, ...gameArgs } = args;
     const gameId = await ctx.db.insert("games", {
-      ...args,
+      ...gameArgs,
       status: "lobby",
       currentRound: 0,
       inviteCode,
+      ttsEnabled: ttsEnabled ?? false,
     });
 
     // Add host as first player
@@ -318,21 +321,50 @@ export const selectWinner = mutation({
       status: "complete",
     });
 
-    // Update player score
+    // Update player score and streak (Feature 3)
     const player = await ctx.db.get(winnerPlayerId);
     if (player) {
-      await ctx.db.patch(winnerPlayerId, { score: player.score + 1 });
+      await ctx.db.patch(winnerPlayerId, {
+        score: player.score + 1,
+        streak: (player.streak ?? 0) + 1,
+      });
+    }
+
+    // Reset streak for all other players in this game
+    const allPlayers = await ctx.db
+      .query("gamePlayers")
+      .withIndex("by_game", (q) => q.eq("gameId", round.gameId))
+      .collect();
+    for (const p of allPlayers) {
+      if (p._id !== winnerPlayerId && (p.streak ?? 0) > 0) {
+        await ctx.db.patch(p._id, { streak: 0 });
+      }
     }
 
     // Check if game is over
     const game = await ctx.db.get(round.gameId);
     if (game && player && player.score + 1 >= game.pointsToWin) {
       await ctx.db.patch(round.gameId, { status: "finished" });
-      // Update user stats
+      // Update user stats and award title (Feature 9)
       if (player.userId) {
         const user = await ctx.db.get(player.userId);
         if (user) {
-          await ctx.db.patch(player.userId, { gamesWon: user.gamesWon + 1 });
+          const newWins = user.gamesWon + 1;
+          const title = newWins >= 50
+            ? "Legendary"
+            : newWins >= 25
+              ? "Champion"
+              : newWins >= 10
+                ? "Veteran"
+                : newWins >= 5
+                  ? "Regular"
+                  : newWins >= 1
+                    ? "Winner"
+                    : undefined;
+          await ctx.db.patch(player.userId, {
+            gamesWon: newWins,
+            ...(title ? { title } : {}),
+          });
         }
       }
     }
@@ -375,6 +407,22 @@ export const startNextRound = mutation({
     // Update game round
     await ctx.db.patch(gameId, { currentRound: newRoundNumber });
 
+    // Feature 6: Themed Rounds — randomly apply a theme modifier (~25% chance)
+    const THEME_MODIFIERS = [
+      "Answers must rhyme",
+      "Respond as a haiku (5-7-5)",
+      "Answer in exactly 3 words",
+      "Respond like a movie trailer narrator",
+      "Answer as if you're a time traveler from the year 3000",
+      "Respond with a question instead of an answer",
+      "Answer like a nature documentary narrator",
+      "Respond as a fortune cookie",
+    ];
+    const themeModifier =
+      Math.random() < 0.25
+        ? THEME_MODIFIERS[Math.floor(Math.random() * THEME_MODIFIERS.length)]
+        : undefined;
+
     // Create new round
     const roundId = await ctx.db.insert("rounds", {
       gameId,
@@ -382,6 +430,7 @@ export const startNextRound = mutation({
       promptCardId: randomPrompt._id,
       judgePlayerId: players[nextJudgeIndex]._id,
       status: "submitting",
+      ...(themeModifier ? { themeModifier } : {}),
     });
 
     // Schedule server-side AI response generation
@@ -389,5 +438,67 @@ export const startNextRound = mutation({
       gameId,
       roundId,
     });
+  },
+});
+
+// Feature 8: Quick Play — instantly create and start a game with random AI opponents
+export const quickPlay = mutation({
+  args: { userId: v.id("users") },
+  handler: async (ctx, { userId }) => {
+    const inviteCode = generateInviteCode();
+
+    // Pick 2-3 random built-in AI personas
+    const builtInPersonas = [
+      "chaotic-carl",
+      "sophisticated-sophie",
+      "edgy-eddie",
+      "wholesome-wendy",
+      "literal-larry",
+    ];
+    const shuffled = [...builtInPersonas].sort(() => Math.random() - 0.5);
+    const aiCount = 2 + Math.floor(Math.random() * 2); // 2 or 3
+    const selectedPersonas = shuffled.slice(0, aiCount);
+
+    const gameId = await ctx.db.insert("games", {
+      hostId: userId,
+      gameMode: "human-vs-ai",
+      maxPlayers: aiCount + 4,
+      pointsToWin: 7,
+      status: "lobby",
+      currentRound: 0,
+      inviteCode,
+    });
+
+    // Add host
+    await ctx.db.insert("gamePlayers", {
+      gameId,
+      userId,
+      isAi: false,
+      score: 0,
+      isJudge: false,
+      hand: [],
+    });
+
+    // Add AI players
+    for (const personaId of selectedPersonas) {
+      await ctx.db.insert("gamePlayers", {
+        gameId,
+        aiPersonaId: personaId,
+        isAi: true,
+        score: 0,
+        isJudge: false,
+        hand: [],
+      });
+    }
+
+    return { gameId, inviteCode };
+  },
+});
+
+// Feature 10: Toggle TTS for a game
+export const toggleTts = mutation({
+  args: { gameId: v.id("games"), enabled: v.boolean() },
+  handler: async (ctx, { gameId, enabled }) => {
+    await ctx.db.patch(gameId, { ttsEnabled: enabled });
   },
 });

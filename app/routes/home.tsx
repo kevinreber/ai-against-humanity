@@ -1,8 +1,8 @@
 import { Link } from "react-router";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Route } from "./+types/home";
-import { GAME_MODES, AI_PERSONAS } from "../lib/constants";
+import { GAME_MODES, AI_PERSONAS, TITLE_THRESHOLDS } from "../lib/constants";
 import { useState, useEffect, useRef, useCallback } from "react";
 
 export function meta({}: Route.MetaArgs) {
@@ -213,6 +213,59 @@ function AnimatedStat({
   );
 }
 
+/** Feature 9: Global Leaderboard on homepage */
+function LeaderboardSection() {
+  const leaderboard = useQuery(api.users.getLeaderboard, { limit: 5 });
+  const sectionRef = useScrollReveal();
+
+  if (!leaderboard || leaderboard.length === 0) return null;
+
+  return (
+    <section
+      ref={sectionRef.ref}
+      className={`container mx-auto px-4 py-16 scroll-reveal ${sectionRef.revealed ? "revealed" : ""}`}
+    >
+      <h2 className="text-2xl font-bold text-center mb-8">
+        <span className="text-[--color-neon-green]">Leaderboard</span>
+      </h2>
+      <div className="max-w-md mx-auto space-y-2">
+        {leaderboard.map((entry) => {
+          const titleColor = entry.gamesWon >= 50
+            ? TITLE_THRESHOLDS["Legendary"]?.color
+            : entry.gamesWon >= 25
+              ? TITLE_THRESHOLDS["Champion"]?.color
+              : entry.gamesWon >= 10
+                ? TITLE_THRESHOLDS["Veteran"]?.color
+                : undefined;
+
+          return (
+            <div
+              key={entry.rank}
+              className="flex items-center justify-between p-3 rounded-lg bg-[--color-dark-card] border border-gray-800"
+            >
+              <div className="flex items-center gap-3">
+                <span className={`text-lg font-bold ${entry.rank === 1 ? "text-[--color-neon-green]" : "text-gray-500"}`}>
+                  {entry.rank === 1 ? "🏆" : `#${entry.rank}`}
+                </span>
+                <span className="font-medium">{entry.username}</span>
+                {titleColor && (
+                  <span className="text-[10px] px-1 rounded uppercase font-bold" style={{ color: titleColor }}>
+                    {entry.gamesWon >= 50 ? "Legendary" : entry.gamesWon >= 25 ? "Champion" : "Veteran"}
+                  </span>
+                )}
+              </div>
+              <div className="text-right">
+                <span className="text-sm font-bold text-[--color-neon-green]">{entry.gamesWon}W</span>
+                <span className="text-xs text-gray-500 ml-1">({entry.winRate.toFixed(0)}%)</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 export default function Home() {
   const seedCards = useMutation(api.seed.seedCards);
   const [seedStatus, setSeedStatus] = useState<string | null>(null);
@@ -273,6 +326,9 @@ export default function Home() {
           </Link>
           <Link to="/games" className="btn-neon-cyan">
             Join Game
+          </Link>
+          <Link to="/games?quickplay=1" className="btn-neon-green">
+            Quick Play
           </Link>
           <Link
             to="/settings"
@@ -435,6 +491,9 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {/* Feature 9: Global Leaderboard */}
+      <LeaderboardSection />
 
       {/* CTA Section */}
       <section className="container mx-auto px-4 py-16 text-center">
