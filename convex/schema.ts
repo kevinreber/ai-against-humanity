@@ -10,6 +10,9 @@ export default defineSchema({
     avatarUrl: v.optional(v.string()),
     gamesPlayed: v.number(),
     gamesWon: v.number(),
+    // Feature 9: Player Avatars & Titles
+    avatar: v.optional(v.string()), // emoji avatar
+    title: v.optional(v.string()), // earned title
   })
     .index("by_clerk_id", ["clerkId"])
     .index("by_username", ["username"])
@@ -46,6 +49,8 @@ export default defineSchema({
     currentRound: v.number(),
     hostId: v.id("users"),
     inviteCode: v.string(),
+    // Feature 10: Voice / TTS Mode
+    ttsEnabled: v.optional(v.boolean()),
   })
     .index("by_status", ["status"])
     .index("by_invite_code", ["inviteCode"])
@@ -60,6 +65,8 @@ export default defineSchema({
     score: v.number(),
     isJudge: v.boolean(),
     hand: v.array(v.id("cards")),
+    // Feature 3: Streak tracking
+    streak: v.optional(v.number()),
   })
     .index("by_game", ["gameId"])
     .index("by_user", ["userId"]),
@@ -76,6 +83,10 @@ export default defineSchema({
       v.literal("judging"),
       v.literal("complete")
     ),
+    // Feature 6: Themed Rounds
+    themeModifier: v.optional(v.string()),
+    // Feature 2: AI Roast Commentary
+    roastCommentary: v.optional(v.string()),
   })
     .index("by_game", ["gameId"])
     .index("by_game_and_round", ["gameId", "roundNumber"]),
@@ -89,6 +100,29 @@ export default defineSchema({
   })
     .index("by_round", ["roundId"])
     .index("by_player", ["playerId"]),
+
+  // Feature 1: Audience Votes
+  audienceVotes: defineTable({
+    roundId: v.id("rounds"),
+    oderId: v.id("users"),
+    submissionId: v.id("submissions"),
+  })
+    .index("by_round", ["roundId"])
+    .index("by_round_and_voter", ["roundId", "oderId"]),
+
+  // Feature 7: Round Highlights (saved best rounds for sharing)
+  roundHighlights: defineTable({
+    gameId: v.id("games"),
+    roundId: v.id("rounds"),
+    savedBy: v.id("users"),
+    promptText: v.string(),
+    winningResponse: v.string(),
+    winnerName: v.string(),
+    roastCommentary: v.optional(v.string()),
+    savedAt: v.number(),
+  })
+    .index("by_user", ["savedBy"])
+    .index("by_game", ["gameId"]),
 
   // AI Response Cache - stores pools of responses per prompt+persona to avoid repeated API calls
   aiResponseCache: defineTable({
@@ -121,6 +155,8 @@ export default defineSchema({
     temperature: v.number(),
     emoji: v.string(),
     isPublic: v.boolean(),
+    // Feature 5: Persona Marketplace - install count
+    installCount: v.optional(v.number()),
   })
     .index("by_creator", ["creatorId"])
     .index("by_public", ["isPublic"]),

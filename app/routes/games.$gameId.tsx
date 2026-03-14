@@ -1,5 +1,5 @@
 import { useParams, Link } from "react-router";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { GameBoard } from "../components/GameBoard";
@@ -9,6 +9,7 @@ import { ErrorBoundary } from "../components/ErrorBoundary";
 import { useState, useEffect } from "react";
 import { ConvexError } from "convex/values";
 import { cn } from "../lib/utils";
+import { AI_PERSONA_NAMES } from "../lib/constants";
 
 // Basic format check for Convex IDs - just ensure it's a non-empty
 // alphanumeric string. Convex handles detailed ID validation server-side.
@@ -74,6 +75,30 @@ function GamePage() {
   const selectWinner = useMutation(api.games.selectWinner);
   const startNextRound = useMutation(api.games.startNextRound);
   const moveToJudging = useMutation(api.rounds.moveToJudging);
+
+  // Feature 1: Audience votes
+  const castVote = useMutation(api.audienceVotes.castVote);
+  const audienceVotesData = useQuery(
+    api.audienceVotes.getVotes,
+    gameState?.currentRound?._id
+      ? { roundId: gameState.currentRound._id }
+      : "skip"
+  );
+  const myVote = useQuery(
+    api.audienceVotes.getMyVote,
+    gameState?.currentRound?._id && currentUserId
+      ? {
+          roundId: gameState.currentRound._id,
+          oderId: currentUserId as Id<"users">,
+        }
+      : "skip"
+  );
+
+  // Feature 7: Highlight saving
+  const saveHighlight = useMutation(api.highlights.saveHighlight);
+
+  // Feature 10: TTS toggle
+  const toggleTts = useMutation(api.games.toggleTts);
 
   // Get current user from localStorage (simplified auth)
   useEffect(() => {
@@ -209,6 +234,46 @@ function GamePage() {
     }
   };
 
+  // Feature 1: Audience vote handler
+  const handleAudienceVote = async (submissionId: string) => {
+    if (!currentRound || !currentUserId) return;
+    try {
+      await castVote({
+        roundId: currentRound._id,
+        oderId: currentUserId as Id<"users">,
+        submissionId: submissionId as Id<"submissions">,
+      });
+    } catch (err) {
+      console.error("Failed to vote:", err);
+    }
+  };
+
+  // Feature 7: Save highlight handler
+  const handleSaveHighlight = async () => {
+    if (!currentRound || !currentUserId || !promptCard) return;
+    const winnerSub = submissions?.find(
+      (s) => s.playerId === currentRound.winnerPlayerId
+    );
+    if (!winnerSub) return;
+    const winnerPlayer = players.find((p) => p._id === winnerSub.playerId);
+    const winnerName = winnerPlayer?.isAi
+      ? AI_PERSONA_NAMES[winnerPlayer.aiPersonaId || ""] || "AI"
+      : winnerPlayer?.username || "Player";
+    try {
+      await saveHighlight({
+        gameId: game._id,
+        roundId: currentRound._id,
+        savedBy: currentUserId as Id<"users">,
+        promptText: promptCard.text,
+        winningResponse: winnerSub.text || "",
+        winnerName,
+        roastCommentary: currentRound.roastCommentary,
+      });
+    } catch {
+      // Already saved
+    }
+  };
+
   // Render lobby view
   if (game.status === "lobby") {
     return (
@@ -314,10 +379,27 @@ function GamePage() {
                 <span className="text-[--color-neon-cyan]">Humanity</span>
               </h1>
             </div>
-            <div className="text-right">
-              <div className="text-xs text-gray-500">Round</div>
-              <div className="text-2xl font-bold text-[--color-neon-green]">
-                {game.currentRound}
+            <div className="flex items-center gap-4">
+              {/* Feature 10: TTS Toggle */}
+              {isHost && (
+                <button
+                  onClick={() => toggleTts({ gameId: game._id, enabled: !game.ttsEnabled })}
+                  className={cn(
+                    "text-xs px-2 py-1 rounded border transition-colors",
+                    game.ttsEnabled
+                      ? "border-[--color-neon-cyan] text-[--color-neon-cyan]"
+                      : "border-gray-700 text-gray-500"
+                  )}
+                  title={game.ttsEnabled ? "Disable voice" : "Enable voice"}
+                >
+                  {game.ttsEnabled ? "🔊 TTS" : "🔇 TTS"}
+                </button>
+              )}
+              <div className="text-right">
+                <div className="text-xs text-gray-500">Round</div>
+                <div className="text-2xl font-bold text-[--color-neon-green]">
+                  {game.currentRound}
+                </div>
               </div>
             </div>
           </div>
@@ -351,7 +433,25 @@ function GamePage() {
               aiPlayersThinking={aiPlayersThinking}
               onSubmitCard={handleSubmitCard}
               onSelectWinner={handleSelectWinner}
+              themeModifier={currentRound?.themeModifier}
+              roastCommentary={currentRound?.roastCommentary}
+              audienceVotes={audienceVotesData?.votes}
+              onAudienceVote={handleAudienceVote}
+              myVote={myVote}
+              ttsEnabled={game.ttsEnabled}
             />
+
+            {/* Feature 7: Save Highlight button */}
+            {currentRound?.status === "complete" && currentRound.winnerPlayerId && currentUserId && (
+              <div className="mt-4 text-center">
+                <button
+                  onClick={handleSaveHighlight}
+                  className="text-xs px-4 py-2 border border-gray-700 rounded-lg text-gray-400 hover:border-[--color-neon-cyan] hover:text-[--color-neon-cyan] transition-colors"
+                >
+                  Save Round Highlight
+                </button>
+              </div>
+            )}
           </main>
         </div>
       </div>

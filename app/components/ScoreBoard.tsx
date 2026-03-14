@@ -8,6 +8,7 @@ interface Player {
   isAi: boolean;
   score: number;
   username?: string;
+  streak?: number;
 }
 
 interface ScoreBoardProps {
@@ -56,6 +57,12 @@ export function ScoreBoard({ players, pointsToWin, className }: ScoreBoardProps)
                     {displayName}
                   </span>
                 </div>
+                {/* Feature 3: Streak indicator */}
+                {(player.streak ?? 0) >= 2 && (
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-400 animate-pulse">
+                    {player.streak}x streak
+                  </span>
+                )}
                 <span className="text-xl font-bold">{player.score}</span>
               </div>
               {/* Progress bar */}

@@ -133,6 +133,16 @@ export const submitAiCard = internalMutation({
   },
 });
 
+// Feature 2: Save roast commentary to a round
+export const saveRoastCommentary = internalMutation({
+  args: { roundId: v.id("rounds"), commentary: v.string() },
+  handler: async (ctx, { roundId, commentary }) => {
+    const round = await ctx.db.get(roundId);
+    if (!round) return;
+    await ctx.db.patch(roundId, { roastCommentary: commentary });
+  },
+});
+
 // Check if all submissions are in and move to judging if so
 export const checkAndMoveToJudging = internalMutation({
   args: { roundId: v.id("rounds"), gameId: v.id("games") },

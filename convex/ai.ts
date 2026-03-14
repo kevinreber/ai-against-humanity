@@ -86,16 +86,21 @@ async function isRateLimited(gameId: string): Promise<boolean> {
 async function callOpenAI(
   prompt: string,
   persona: { systemPrompt: string; temperature: number },
-  userApiKey?: string
+  userApiKey?: string,
+  themeModifier?: string
 ): Promise<string> {
   const openai = userApiKey ? new OpenAI({ apiKey: userApiKey }) : new OpenAI();
+
+  const systemContent = themeModifier
+    ? `${persona.systemPrompt}\n\nIMPORTANT ROUND THEME: ${themeModifier}. You MUST follow this constraint in your response.`
+    : persona.systemPrompt;
 
   const response = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     max_tokens: 50,
     temperature: persona.temperature,
     messages: [
-      { role: "system", content: persona.systemPrompt },
+      { role: "system", content: systemContent },
       {
         role: "user",
         content: `The prompt card says: "${prompt}"\n\nWhat is your response card?`,
@@ -122,6 +127,9 @@ export const generateAiSubmissions = internalAction({
 
     const { round, promptCard, players, submissions, hostId } = roundInfo;
     if (!promptCard) return;
+
+    // Feature 6: Get theme modifier if present
+    const themeModifier = (round as any).themeModifier as string | undefined;
 
     // Try to get the host's API key for BYOK
     let userApiKey: string | undefined;
@@ -183,7 +191,8 @@ export const generateAiSubmissions = internalAction({
         personaId: aiPlayer.aiPersonaId,
       });
 
-      if (cached && cached.responses.length > 0) {
+      if (cached && cached.responses.length > 0 && !themeModifier) {
+        // Skip cache when theme modifier is active — we want unique themed responses
         responseText =
           cached.responses[
             Math.floor(Math.random() * cached.responses.length)
@@ -197,7 +206,7 @@ export const generateAiSubmissions = internalAction({
           } else {
             // 3) Call OpenAI with default key
             try {
-              responseText = await callOpenAI(promptCard.text, persona);
+              responseText = await callOpenAI(promptCard.text, persona, undefined, themeModifier);
             } catch (err) {
               console.error("OpenAI API error:", err);
               responseText = "My circuits are fried right now.";
@@ -209,7 +218,8 @@ export const generateAiSubmissions = internalAction({
             responseText = await callOpenAI(
               promptCard.text,
               persona,
-              userApiKey
+              userApiKey,
+              themeModifier
             );
             // Mark successful usage
             if (userKeyRecord) {
@@ -232,7 +242,7 @@ export const generateAiSubmissions = internalAction({
 
             // Fall back to default key
             try {
-              responseText = await callOpenAI(promptCard.text, persona);
+              responseText = await callOpenAI(promptCard.text, persona, undefined, themeModifier);
             } catch {
               responseText = "My circuits are fried right now.";
             }
@@ -324,6 +334,57 @@ export const judgeSubmissions = action({
       winnerId: submissions[0].id,
       explanation: "I couldn't decide, so I picked the first one!",
     };
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Feature 2: AI Roast Commentary — after each round, an AI commentator
+// delivers a short roast/recap of the submissions.
+// ---------------------------------------------------------------------------
+export const generateRoastCommentary = internalAction({
+  args: {
+    roundId: v.id("rounds"),
+    promptText: v.string(),
+    submissions: v.array(
+      v.object({ playerName: v.string(), text: v.string(), isWinner: v.boolean() })
+    ),
+  },
+  handler: async (ctx, { roundId, promptText, submissions }) => {
+    const openai = new OpenAI();
+
+    const submissionList = submissions
+      .map(
+        (s) =>
+          `- ${s.playerName}: "${s.text}"${s.isWinner ? " (WINNER)" : ""}`
+      )
+      .join("\n");
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      max_tokens: 150,
+      temperature: 1.0,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a snarky, hilarious game show commentator roasting the round results of a Cards Against Humanity game. Be brief (2-3 sentences), witty, and playfully savage. Roast the submissions and congratulate the winner in a backhanded way.",
+        },
+        {
+          role: "user",
+          content: `The prompt was: "${promptText}"\n\nThe submissions:\n${submissionList}\n\nGive your roast commentary:`,
+        },
+      ],
+    });
+
+    const commentary =
+      response.choices[0]?.message?.content?.trim() ||
+      "No words. Just... no words.";
+
+    // Save commentary to the round
+    await ctx.runMutation(internal.aiQueries.saveRoastCommentary, {
+      roundId,
+      commentary,
+    });
   },
 });
 

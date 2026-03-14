@@ -25,6 +25,16 @@ interface GameBoardProps {
   onSubmitCard: (cardId: string) => void;
   onSelectWinner: (submissionId: string) => void;
   className?: string;
+  // Feature 6: Themed Rounds
+  themeModifier?: string;
+  // Feature 2: AI Roast Commentary
+  roastCommentary?: string;
+  // Feature 1: Audience Votes
+  audienceVotes?: Record<string, number>;
+  onAudienceVote?: (submissionId: string) => void;
+  myVote?: string | null;
+  // Feature 10: TTS Mode
+  ttsEnabled?: boolean;
 }
 
 export function GameBoard({
@@ -38,6 +48,12 @@ export function GameBoard({
   onSubmitCard,
   onSelectWinner,
   className,
+  themeModifier,
+  roastCommentary,
+  audienceVotes,
+  onAudienceVote,
+  myVote,
+  ttsEnabled,
 }: GameBoardProps) {
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
 
@@ -71,6 +87,16 @@ export function GameBoard({
         )}
       </div>
 
+      {/* Feature 6: Theme Modifier Banner */}
+      {themeModifier && (
+        <div className="text-center">
+          <div className="inline-block px-4 py-2 rounded-lg bg-[--color-neon-purple]/10 border border-[--color-neon-purple]/50">
+            <span className="text-xs uppercase tracking-wider text-gray-400">Round Theme: </span>
+            <span className="text-sm font-bold text-[--color-neon-purple]">{themeModifier}</span>
+          </div>
+        </div>
+      )}
+
       {/* Status Message */}
       <div className="text-center">
         <StatusBadge
@@ -93,8 +119,55 @@ export function GameBoard({
                 submission={submission}
                 isJudging={roundStatus === "judging" && isJudge}
                 onSelect={() => onSelectWinner(submission._id)}
+                ttsEnabled={ttsEnabled}
               />
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Feature 1: Audience Vote Counts (shown during judging/complete) */}
+      {roundStatus !== "submitting" && audienceVotes && onAudienceVote && (
+        <div className="text-center">
+          <p className="text-xs text-gray-500 mb-2">
+            {!isJudge ? "Vote for your favorite!" : "Audience is voting..."}
+          </p>
+          <div className="flex justify-center gap-2 flex-wrap">
+            {submissions.map((sub) => {
+              const votes = audienceVotes[sub._id] || 0;
+              const isMyVote = myVote === sub._id;
+              return (
+                <button
+                  key={sub._id}
+                  onClick={() => !isJudge && onAudienceVote(sub._id)}
+                  disabled={isJudge}
+                  className={cn(
+                    "px-3 py-1 rounded-full text-xs border transition-all",
+                    isMyVote
+                      ? "border-[--color-neon-green] bg-[--color-neon-green]/20 text-[--color-neon-green]"
+                      : "border-gray-700 text-gray-400 hover:border-gray-500",
+                    isJudge && "cursor-default opacity-50"
+                  )}
+                >
+                  {(sub.player?.isAi
+                    ? AI_PERSONA_NAMES[sub.player.aiPersonaId || ""]
+                    : sub.player?.username) || "Player"}
+                  : {votes} vote{votes !== 1 ? "s" : ""}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Feature 2: AI Roast Commentary */}
+      {roastCommentary && roundStatus === "complete" && (
+        <div className="max-w-xl mx-auto text-center">
+          <div className="game-card border-orange-500/50">
+            <div className="text-xs uppercase tracking-wider text-orange-400 font-bold mb-2">
+              AI Commentator
+            </div>
+            <p className="text-sm text-gray-300 italic">&ldquo;{roastCommentary}&rdquo;</p>
           </div>
         </div>
       )}
@@ -208,14 +281,27 @@ function StatusBadge({
   );
 }
 
+// Feature 10: Text-to-Speech helper
+function speakText(text: string) {
+  if ("speechSynthesis" in window) {
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 0.9;
+    utterance.pitch = 1.1;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+  }
+}
+
 function SubmissionCard({
   submission,
   isJudging,
   onSelect,
+  ttsEnabled,
 }: {
   submission: Submission;
   isJudging: boolean;
   onSelect: () => void;
+  ttsEnabled?: boolean;
 }) {
   const playerName = submission.player?.isAi
     ? AI_PERSONA_NAMES[submission.player.aiPersonaId || ""] || "AI"
@@ -230,13 +316,26 @@ function SubmissionCard({
         className={isJudging ? "cursor-pointer" : ""}
       />
       {/* Show player name after judging */}
-      <div className="mt-2 text-center">
+      <div className="mt-2 text-center flex items-center justify-center gap-2">
         <span className="text-xs text-gray-500">
           {submission.player?.isAi && (
             <span className="text-[--color-neon-purple]">AI: </span>
           )}
           {playerName}
         </span>
+        {/* Feature 10: TTS button */}
+        {ttsEnabled && submission.text && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              speakText(submission.text!);
+            }}
+            className="text-xs text-gray-600 hover:text-[--color-neon-cyan] transition-colors"
+            title="Read aloud"
+          >
+            🔊
+          </button>
+        )}
       </div>
     </div>
   );

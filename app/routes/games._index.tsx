@@ -1,6 +1,8 @@
-import { Link } from "react-router";
-import { useQuery } from "convex/react";
+import { useState, useEffect } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import type { Id } from "../../convex/_generated/dataModel";
 
 function formatTimeAgo(timestamp: number): string {
   const seconds = Math.floor((Date.now() - timestamp) / 1000);
@@ -22,6 +24,36 @@ export function meta() {
 
 export default function GamesIndex() {
   const lobbies = useQuery(api.games.listLobbies);
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const quickPlay = useMutation(api.games.quickPlay);
+  const createGuestUser = useMutation(api.users.createGuestUser);
+  const [quickPlayLoading, setQuickPlayLoading] = useState(false);
+
+  // Feature 8: Quick Play — auto-trigger if ?quickplay=1
+  useEffect(() => {
+    if (searchParams.get("quickplay") === "1") {
+      handleQuickPlay();
+    }
+  }, []);
+
+  const handleQuickPlay = async () => {
+    setQuickPlayLoading(true);
+    try {
+      let userId = localStorage.getItem("userId");
+      if (!userId) {
+        const names = ["Player", "Challenger", "Contender", "Rookie", "Gamer"];
+        const name = names[Math.floor(Math.random() * names.length)] + Math.floor(Math.random() * 999);
+        userId = await createGuestUser({ username: name });
+        localStorage.setItem("userId", userId);
+      }
+      const { gameId } = await quickPlay({ userId: userId as Id<"users"> });
+      navigate(`/games/${gameId}`);
+    } catch (err) {
+      console.error("Quick play failed:", err);
+      setQuickPlayLoading(false);
+    }
+  };
 
   return (
     <div className="container mx-auto px-4 py-12">
@@ -38,9 +70,18 @@ export default function GamesIndex() {
             <span className="neon-text-cyan">Join a Game</span>
           </h1>
         </div>
-        <Link to="/games/new" className="btn-neon-pink">
-          Create Game
-        </Link>
+        <div className="flex gap-3">
+          <button
+            onClick={handleQuickPlay}
+            disabled={quickPlayLoading}
+            className="btn-neon-green"
+          >
+            {quickPlayLoading ? "Matching..." : "Quick Play"}
+          </button>
+          <Link to="/games/new" className="btn-neon-pink">
+            Create Game
+          </Link>
+        </div>
       </div>
 
       {/* Join by Code */}
