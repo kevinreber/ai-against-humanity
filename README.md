@@ -149,15 +149,21 @@ npm run test:debug      # Debug mode
 ```
 app/
 ├── components/         # Reusable UI (GameBoard, PlayerList, Card, etc.)
+│   ├── NotificationBell.tsx  # Real-time notification dropdown
+│   ├── SpectatorChat.tsx     # Live chat overlay for spectators
+│   └── XpBar.tsx             # XP progress bar component
 ├── routes/             # Pages — home, game creation, lobby, active game
 │   ├── home.tsx
 │   ├── games._index.tsx
 │   ├── games.new.tsx
 │   ├── games.$gameId.tsx
-│   └── settings.tsx    # API keys + custom persona management
+│   ├── settings.tsx    # API keys, personas, achievements, friends, crates
+│   ├── daily.tsx       # Daily challenge page
+│   ├── hall-of-fame.tsx # Community best-of feed
+│   └── rivalries.tsx   # AI persona head-to-head records
 └── lib/                # Utilities, constants, helpers
 convex/
-├── schema.ts           # Database schema (users, games, cards, apiKeys, customPersonas)
+├── schema.ts           # Database schema (users, games, cards, apiKeys, customPersonas, etc.)
 ├── games.ts            # Game logic (mutations & queries)
 ├── rounds.ts           # Round management
 ├── ai.ts               # AI response generation & caching (Node.js actions)
@@ -167,6 +173,52 @@ convex/
 ├── encryption.ts       # AES-256-GCM encryption utilities
 ├── users.ts            # User management
 ├── rateLimit.ts        # Rate limiting helpers
-└── seed.ts             # Database seeding
+├── seed.ts             # Database seeding
+├── achievements.ts     # Achievement badges system
+├── dailyChallenges.ts  # Daily challenge prompts & entries
+├── friends.ts          # Friends list & requests
+├── hallOfFame.ts       # Hall of Fame upvoting
+├── notifications.ts    # Real-time notification system
+├── rewardCrates.ts     # Reward crates & unlockable card backs
+├── rivalries.ts        # AI persona head-to-head tracking
+├── spectatorChat.ts    # Spectator mode with live chat
+└── xp.ts              # XP & leveling system
 e2e/                    # Playwright test specs
 ```
+
+## Setup Checklist
+
+Use this checklist when setting up or deploying the app for the first time:
+
+### Required
+
+- [ ] **Node.js 20+** installed
+- [ ] **Convex account** created at [convex.dev](https://convex.dev)
+- [ ] **OpenAI API key** obtained at [platform.openai.com](https://platform.openai.com)
+- [ ] Run `npm install`
+- [ ] Create `.env` file with `VITE_CONVEX_URL=https://your-project.convex.cloud`
+- [ ] Set `OPENAI_API_KEY` in the [Convex Dashboard](https://dashboard.convex.dev) environment variables
+- [ ] Run `npx convex dev` to initialize Convex and generate types
+- [ ] Run `npm run dev` and verify the app loads at `http://localhost:5173`
+- [ ] Click "Seed Database" on the home page to populate starter card packs
+
+### Optional (Recommended for Production)
+
+- [ ] **Upstash Redis** — Set `UPSTASH_REDIS_URL` and `UPSTASH_REDIS_TOKEN` in Convex Dashboard for rate limiting (10 AI calls/min, 100/day per game)
+- [ ] **Encryption key** — Set `ENCRYPTION_KEY` in Convex Dashboard for BYOK user API key encryption (generate with `openssl rand -hex 32`)
+- [ ] **Clerk authentication** — Configure Clerk for proper user auth (currently supports guest mode)
+
+### Feature-Specific Notes
+
+| Feature | API/Service Needed | Notes |
+|---------|-------------------|-------|
+| AI responses & judging | OpenAI (`OPENAI_API_KEY`) | Required — powers all AI gameplay |
+| AI Voice (TTS) | None (browser Web Speech API) | Works client-side, no API key needed |
+| Rate limiting | Upstash Redis | Optional — falls back to unlimited if not set |
+| User API keys (BYOK) | `ENCRYPTION_KEY` | Users can bring their own OpenAI key |
+| Daily Challenges | None | Uses existing OpenAI key for prompts |
+| XP / Achievements / Friends | None | Purely database-driven via Convex |
+| Spectator Chat | None | Real-time via Convex subscriptions |
+| Hall of Fame / Rivalries | None | Database queries only |
+| Reward Crates | None | Database-driven, no external service |
+| Seasonal Events | None | Time-based, auto-detected from system date |
