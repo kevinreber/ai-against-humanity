@@ -168,12 +168,20 @@ export default function GamesIndex() {
                       {formatTimeAgo(game._creationTime)}
                     </span>
                   </div>
-                  <Link
-                    to={`/games/${game._id}`}
-                    className="text-sm font-bold text-[--color-neon-cyan] hover:underline"
-                  >
-                    Join &rarr;
-                  </Link>
+                  <div className="flex items-center gap-2">
+                    <Link
+                      to={`/games/${game._id}?spectate=1`}
+                      className="text-xs text-gray-500 hover:text-[--color-neon-purple]"
+                    >
+                      Watch
+                    </Link>
+                    <Link
+                      to={`/games/${game._id}`}
+                      className="text-sm font-bold text-[--color-neon-cyan] hover:underline"
+                    >
+                      Join &rarr;
+                    </Link>
+                  </div>
                 </div>
               </div>
             ))}

@@ -6,6 +6,7 @@ import { GameBoard } from "../components/GameBoard";
 import { PlayerList } from "../components/PlayerList";
 import { ScoreBoard, GameResults } from "../components/ScoreBoard";
 import { ErrorBoundary } from "../components/ErrorBoundary";
+import { SpectatorChat } from "../components/SpectatorChat";
 import { useState, useEffect } from "react";
 import { ConvexError } from "convex/values";
 import { cn } from "../lib/utils";
@@ -99,6 +100,12 @@ function GamePage() {
 
   // Feature 10: TTS toggle
   const toggleTts = useMutation(api.games.toggleTts);
+
+  // Retention features
+  const addXp = useMutation(api.xp.addXp);
+  const checkAchievements = useMutation(api.achievements.checkAchievements);
+  const recordRivalry = useMutation(api.rivalries.recordResult);
+  const checkCrateAward = useMutation(api.rewardCrates.checkCrateAward);
 
   // Get current user from localStorage (simplified auth)
   useEffect(() => {
@@ -343,14 +350,46 @@ function GamePage() {
       prev.score > current.score ? prev : current
     );
 
+    // Award XP and check achievements on game finish
+    useEffect(() => {
+      if (currentUserId && game.status === "finished") {
+        const uid = currentUserId as Id<"users">;
+        // XP for playing
+        addXp({ userId: uid, amount: 10, reason: "game_played" });
+
+        // XP for winning
+        const myPlayer = players.find((p) => p.userId === currentUserId);
+        if (myPlayer && myPlayer._id === winner._id) {
+          addXp({ userId: uid, amount: 50, reason: "game_won" });
+          checkCrateAward({ userId: uid });
+        }
+
+        // Check achievements
+        checkAchievements({ userId: uid });
+
+        // Record AI rivalries (for all AI vs AI pairs in this game)
+        const aiPlayers = players.filter((p) => p.isAi && p.aiPersonaId);
+        if (aiPlayers.length >= 2) {
+          const aiWinner = aiPlayers.reduce((prev, cur) => prev.score > cur.score ? prev : cur);
+          for (const loser of aiPlayers) {
+            if (loser._id !== aiWinner._id && aiWinner.aiPersonaId && loser.aiPersonaId) {
+              recordRivalry({
+                winnerPersonaId: aiWinner.aiPersonaId,
+                loserPersonaId: loser.aiPersonaId,
+              });
+            }
+          }
+        }
+      }
+    }, [game.status]);
+
     return (
       <div className="container mx-auto px-4 py-12 max-w-2xl">
         <GameResults
           players={players}
           winnerId={winner._id}
           onPlayAgain={() => {
-            // TODO: Implement rematch
-            window.location.reload();
+            window.location.href = "/games/new";
           }}
           onBackToLobby={() => {
             window.location.href = "/games";
@@ -455,6 +494,9 @@ function GamePage() {
           </main>
         </div>
       </div>
+
+      {/* Spectator Chat */}
+      <SpectatorChat gameId={gameId} userId={currentUserId} />
     </div>
   );
 }

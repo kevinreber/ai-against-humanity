@@ -4,7 +4,8 @@ import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { cn } from "../lib/utils";
-import { AVATAR_OPTIONS, TITLE_THRESHOLDS } from "../lib/constants";
+import { AVATAR_OPTIONS, TITLE_THRESHOLDS, ACHIEVEMENTS, CARD_BACKS, CRATE_TYPES } from "../lib/constants";
+import { XpBar } from "../components/XpBar";
 
 export function meta() {
   return [
@@ -73,6 +74,10 @@ export default function Settings() {
 
       <div className="space-y-12">
         <ProfileSection userId={userId as Id<"users">} user={user} />
+        <XpBar userId={userId} />
+        <AchievementsSection userId={userId as Id<"users">} />
+        <FriendsSection userId={userId as Id<"users">} />
+        <CratesSection userId={userId as Id<"users">} />
         <ApiKeySection userId={userId as Id<"users">} />
         <CustomPersonaSection userId={userId as Id<"users">} />
         <PersonaMarketplaceSection userId={userId as Id<"users">} />
@@ -921,6 +926,284 @@ function CardPackSection({ userId }: { userId: Id<"users"> }) {
           </div>
         </div>
       )}
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Achievements Section
+// ---------------------------------------------------------------------------
+function AchievementsSection({ userId }: { userId: Id<"users"> }) {
+  const userAchievements = useQuery(api.achievements.getUserAchievements, { userId });
+  const checkAchievements = useMutation(api.achievements.checkAchievements);
+
+  const unlockedIds = new Set(userAchievements?.map((a) => a.achievementId) ?? []);
+
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-1">
+        <h2 className="text-xl font-bold">
+          <span className="text-[--color-neon-green]">Achievements</span>
+        </h2>
+        <button
+          onClick={() => checkAchievements({ userId })}
+          className="text-xs text-[--color-neon-cyan] hover:underline"
+        >
+          Check for new
+        </button>
+      </div>
+      <p className="text-sm text-gray-400 mb-6">
+        {unlockedIds.size}/{ACHIEVEMENTS.length} unlocked
+      </p>
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        {ACHIEVEMENTS.map((ach) => {
+          const unlocked = unlockedIds.has(ach.id);
+          return (
+            <div
+              key={ach.id}
+              className={cn(
+                "game-card text-center p-3",
+                unlocked ? "border-[--color-neon-green]/50" : "opacity-40"
+              )}
+            >
+              <div className="text-2xl mb-1">{ach.icon}</div>
+              <div className="text-xs font-bold text-gray-200">{ach.name}</div>
+              <div className="text-xs text-gray-500 mt-0.5">{ach.description}</div>
+              {unlocked && (
+                <div className="text-xs text-[--color-neon-green] mt-1">+{ach.xpReward} XP</div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Friends Section
+// ---------------------------------------------------------------------------
+function FriendsSection({ userId }: { userId: Id<"users"> }) {
+  const friends = useQuery(api.friends.getFriends, { userId });
+  const pendingRequests = useQuery(api.friends.getPendingRequests, { userId });
+  const sendRequest = useMutation(api.friends.sendRequest);
+  const acceptRequest = useMutation(api.friends.acceptRequest);
+  const removeFriend = useMutation(api.friends.removeFriend);
+
+  const [friendUsername, setFriendUsername] = useState("");
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  const handleSendRequest = async () => {
+    setError("");
+    setSuccess("");
+    if (!friendUsername.trim()) return;
+    try {
+      await sendRequest({ userId, friendUsername: friendUsername.trim() });
+      setSuccess(`Friend request sent to ${friendUsername}!`);
+      setFriendUsername("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to send request");
+    }
+  };
+
+  return (
+    <section>
+      <h2 className="text-xl font-bold mb-1">
+        <span className="text-[--color-neon-cyan]">Friends</span>
+      </h2>
+      <p className="text-sm text-gray-400 mb-6">
+        Add friends to see when they're online and rematch easily.
+      </p>
+
+      {/* Pending requests */}
+      {pendingRequests && pendingRequests.length > 0 && (
+        <div className="mb-4">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-orange-400 mb-2">
+            Pending Requests ({pendingRequests.length})
+          </h3>
+          <div className="space-y-2">
+            {pendingRequests.map((req) => (
+              <div key={req!.friendshipId} className="game-card flex items-center justify-between p-3">
+                <div className="flex items-center gap-2">
+                  <span>{req!.avatar || "😎"}</span>
+                  <span className="font-medium">{req!.username}</span>
+                </div>
+                <button
+                  onClick={() => acceptRequest({ userId, friendshipId: req!.friendshipId as Id<"friends"> })}
+                  className="text-xs px-3 py-1 rounded border border-[--color-neon-green] text-[--color-neon-green] hover:bg-[--color-neon-green]/20"
+                >
+                  Accept
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Friends list */}
+      {friends && friends.length > 0 && (
+        <div className="mb-4 space-y-2">
+          {friends.map((f) => (
+            <div key={f!.userId} className="game-card flex items-center justify-between p-3">
+              <div className="flex items-center gap-2">
+                <span>{f!.avatar || "😎"}</span>
+                <span className="font-medium">{f!.username}</span>
+                <span className="text-xs text-[--color-neon-purple]">Lvl {f!.level}</span>
+                {f!.title && (
+                  <span className="text-xs text-gray-500">{f!.title}</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500">{f!.gamesWon}W</span>
+                <button
+                  onClick={() => removeFriend({ userId, friendId: f!.userId as Id<"users"> })}
+                  className="text-xs text-red-400 hover:text-red-300"
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Add friend */}
+      <div className="game-card">
+        {error && <div className="text-red-400 text-sm mb-3">{error}</div>}
+        {success && <div className="text-green-400 text-sm mb-3">{success}</div>}
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={friendUsername}
+            onChange={(e) => setFriendUsername(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleSendRequest()}
+            placeholder="Enter username to add..."
+            className="flex-1 bg-[--color-dark-bg] border border-gray-700 rounded-lg px-4 py-3 focus:border-[--color-neon-cyan] focus:outline-none"
+          />
+          <button onClick={handleSendRequest} className="btn-neon-cyan">
+            Add Friend
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Reward Crates Section
+// ---------------------------------------------------------------------------
+function CratesSection({ userId }: { userId: Id<"users"> }) {
+  const crates = useQuery(api.rewardCrates.getMyCrates, { userId });
+  const openCrate = useMutation(api.rewardCrates.openCrate);
+  const selectCardBack = useMutation(api.rewardCrates.selectCardBack);
+  const user = useQuery(api.users.getUser, { userId });
+
+  const [lastReward, setLastReward] = useState<string | null>(null);
+
+  const handleOpenCrate = async (crateId: string) => {
+    try {
+      const reward = await openCrate({ crateId: crateId as Id<"rewardCrates">, userId });
+      setLastReward(reward);
+    } catch (err) {
+      console.error("Failed to open crate:", err);
+    }
+  };
+
+  const crateColors: Record<string, string> = {
+    bronze: "#cd7f32",
+    silver: "#c0c0c0",
+    gold: "#ffd700",
+    diamond: "#b9f2ff",
+  };
+
+  const crateEmojis: Record<string, string> = {
+    bronze: "🥉",
+    silver: "🥈",
+    gold: "🥇",
+    diamond: "💎",
+  };
+
+  return (
+    <section>
+      <h2 className="text-xl font-bold mb-1">
+        <span className="text-[--color-neon-pink]">Reward Crates & Card Backs</span>
+      </h2>
+      <p className="text-sm text-gray-400 mb-6">
+        Win games to earn crates with exclusive card backs.
+      </p>
+
+      {lastReward && (
+        <div className="p-4 rounded-lg bg-[--color-neon-green]/10 border border-[--color-neon-green] text-center mb-4 animate-fade-up">
+          <div className="text-2xl mb-1">🎉</div>
+          <div className="text-sm text-[--color-neon-green] font-bold">
+            You unlocked: {CARD_BACKS.find((cb) => cb.id === lastReward)?.name || lastReward}!
+          </div>
+          <button onClick={() => setLastReward(null)} className="text-xs text-gray-500 mt-2">
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {/* Unopened crates */}
+      {crates && crates.filter((c) => !c.opened).length > 0 && (
+        <div className="mb-6">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">
+            Unopened Crates
+          </h3>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {crates.filter((c) => !c.opened).map((crate) => (
+              <button
+                key={crate._id}
+                onClick={() => handleOpenCrate(crate._id)}
+                className="game-card text-center p-4 hover:scale-105 transition-transform cursor-pointer"
+                style={{ borderColor: crateColors[crate.crateType] + "80" }}
+              >
+                <div className="text-3xl mb-1">{crateEmojis[crate.crateType] || "📦"}</div>
+                <div className="text-xs font-bold" style={{ color: crateColors[crate.crateType] }}>
+                  {crate.crateType.charAt(0).toUpperCase() + crate.crateType.slice(1)} Crate
+                </div>
+                <div className="text-xs text-gray-500 mt-1">Tap to open</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Card back selector */}
+      <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">
+        Card Backs
+      </h3>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {CARD_BACKS.map((cb) => {
+          const isUnlocked = cb.unlockedByDefault || (user?.unlockedCardBacks ?? []).includes(cb.id);
+          const isSelected = (user?.selectedCardBack ?? "default") === cb.id;
+          return (
+            <button
+              key={cb.id}
+              onClick={() => isUnlocked && selectCardBack({ userId, cardBackId: cb.id })}
+              disabled={!isUnlocked}
+              className={cn(
+                "game-card text-center p-3 transition-all",
+                isSelected && "border-[--color-neon-green] bg-[--color-neon-green]/5",
+                !isUnlocked && "opacity-30 cursor-not-allowed"
+              )}
+            >
+              <div className="text-lg mb-1">{isUnlocked ? "🃏" : "🔒"}</div>
+              <div className="text-xs font-bold text-gray-200">{cb.name}</div>
+              {isSelected && (
+                <div className="text-xs text-[--color-neon-green] mt-1">Equipped</div>
+              )}
+              {!isUnlocked && cb.crateType && (
+                <div className="text-xs text-gray-600 mt-1">
+                  From {cb.crateType} crate
+                </div>
+              )}
+            </button>
+          );
+        })}
+      </div>
     </section>
   );
 }
