@@ -7,4 +7,7 @@ export default [
   route("games/:gameId", "routes/games.$gameId.tsx"),
   route("settings", "routes/settings.tsx"),
   route("highlights/:highlightId", "routes/highlights.$highlightId.tsx"),
+  route("daily", "routes/daily.tsx"),
+  route("hall-of-fame", "routes/hall-of-fame.tsx"),
+  route("rivalries", "routes/rivalries.tsx"),
 ] satisfies RouteConfig;

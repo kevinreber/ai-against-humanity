@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { Card, AiTypingCard } from "./Card";
 import { cn } from "../lib/utils";
-import { AI_PERSONA_NAMES } from "../lib/constants";
+import { AI_PERSONA_NAMES, AI_VOICE_SETTINGS } from "../lib/constants";
 
 interface Submission {
   _id: string;
@@ -281,15 +281,30 @@ function StatusBadge({
   );
 }
 
-// Feature 10: Text-to-Speech helper
-function speakText(text: string) {
-  if ("speechSynthesis" in window) {
-    const utterance = new SpeechSynthesisUtterance(text);
+// Feature 10: Text-to-Speech helper with persona-specific voice
+function speakText(text: string, personaId?: string) {
+  if (!("speechSynthesis" in window)) return;
+
+  const utterance = new SpeechSynthesisUtterance(text);
+  const voiceSettings = personaId ? AI_VOICE_SETTINGS[personaId] : undefined;
+
+  if (voiceSettings) {
+    utterance.pitch = voiceSettings.pitch;
+    utterance.rate = voiceSettings.rate;
+
+    // Try to find a matching voice by name
+    if (voiceSettings.voiceName) {
+      const voices = window.speechSynthesis.getVoices();
+      const match = voices.find((v) => v.name.includes(voiceSettings.voiceName!));
+      if (match) utterance.voice = match;
+    }
+  } else {
     utterance.rate = 0.9;
     utterance.pitch = 1.1;
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(utterance);
   }
+
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(utterance);
 }
 
 function SubmissionCard({
@@ -323,15 +338,15 @@ function SubmissionCard({
           )}
           {playerName}
         </span>
-        {/* Feature 10: TTS button */}
+        {/* Feature 10: TTS button with persona voice */}
         {ttsEnabled && submission.text && (
           <button
             onClick={(e) => {
               e.stopPropagation();
-              speakText(submission.text!);
+              speakText(submission.text!, submission.player?.aiPersonaId);
             }}
             className="text-xs text-gray-600 hover:text-[--color-neon-cyan] transition-colors"
-            title="Read aloud"
+            title="Read aloud with AI voice"
           >
             🔊
           </button>

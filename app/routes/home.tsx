@@ -2,8 +2,9 @@ import { Link } from "react-router";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Route } from "./+types/home";
-import { GAME_MODES, AI_PERSONAS, TITLE_THRESHOLDS } from "../lib/constants";
+import { GAME_MODES, AI_PERSONAS, TITLE_THRESHOLDS, SEASONAL_EVENTS } from "../lib/constants";
 import { useState, useEffect, useRef, useCallback } from "react";
+import { NotificationBell } from "../components/NotificationBell";
 
 export function meta({}: Route.MetaArgs) {
   return [
@@ -266,6 +267,89 @@ function LeaderboardSection() {
   );
 }
 
+/** Seasonal Events Banner */
+function SeasonalEventsSection() {
+  const sectionRef = useScrollReveal();
+  const currentMonth = new Date().getMonth() + 1;
+  const activeEvent = SEASONAL_EVENTS.find(
+    (e) => currentMonth >= e.startMonth && currentMonth <= e.endMonth
+  );
+
+  if (!activeEvent) return null;
+
+  return (
+    <section
+      ref={sectionRef.ref}
+      className={`container mx-auto px-4 py-12 scroll-reveal ${sectionRef.revealed ? "revealed" : ""}`}
+    >
+      <div
+        className="max-w-2xl mx-auto p-6 rounded-xl border-2 text-center"
+        style={{
+          borderColor: activeEvent.themeColor,
+          background: `${activeEvent.themeColor}10`,
+        }}
+      >
+        <h2 className="text-2xl font-bold mb-2" style={{ color: activeEvent.themeColor }}>
+          {activeEvent.name}
+        </h2>
+        <p className="text-gray-400 text-sm mb-4">{activeEvent.description}</p>
+        <p className="text-xs text-gray-500">
+          Limited-time event — special themed cards and prompts!
+        </p>
+        <Link
+          to="/games/new"
+          className="inline-block mt-4 px-6 py-3 rounded-lg font-bold uppercase tracking-wider transition-all border-2"
+          style={{ borderColor: activeEvent.themeColor, color: activeEvent.themeColor }}
+        >
+          Play Seasonal Mode
+        </Link>
+      </div>
+    </section>
+  );
+}
+
+/** Retention features showcase */
+function RetentionFeaturesSection() {
+  const sectionRef = useScrollReveal();
+
+  const features = [
+    { icon: "📅", name: "Daily Challenges", desc: "New prompt every day", link: "/daily", color: "var(--color-neon-pink)" },
+    { icon: "🏛️", name: "Hall of Fame", desc: "Best rounds ever played", link: "/hall-of-fame", color: "var(--color-neon-green)" },
+    { icon: "⚔️", name: "AI Rivalries", desc: "Head-to-head persona records", link: "/rivalries", color: "var(--color-neon-purple)" },
+    { icon: "🏆", name: "Achievements", desc: "Unlock badges and earn XP", link: "/settings", color: "var(--color-neon-cyan)" },
+    { icon: "👥", name: "Friends", desc: "Add friends and rematch", link: "/settings", color: "var(--color-neon-pink)" },
+    { icon: "📦", name: "Reward Crates", desc: "Win games, unlock card backs", link: "/settings", color: "var(--color-neon-green)" },
+  ];
+
+  return (
+    <section
+      ref={sectionRef.ref}
+      className={`container mx-auto px-4 py-16 scroll-reveal ${sectionRef.revealed ? "revealed" : ""}`}
+    >
+      <h2 className="text-2xl font-bold text-center mb-8">
+        <span className="neon-text-pink">More Ways to Play</span>
+      </h2>
+      <div
+        className={`grid md:grid-cols-3 gap-4 max-w-4xl mx-auto stagger-grid ${sectionRef.revealed ? "revealed" : ""}`}
+      >
+        {features.map((f) => (
+          <Link
+            key={f.name}
+            to={f.link}
+            className="game-card text-center hover:border-gray-500 group"
+          >
+            <div className="text-3xl mb-2">{f.icon}</div>
+            <h3 className="font-bold mb-1" style={{ color: f.color }}>
+              {f.name}
+            </h3>
+            <p className="text-xs text-gray-500">{f.desc}</p>
+          </Link>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export default function Home() {
   const seedCards = useMutation(api.seed.seedCards);
   const [seedStatus, setSeedStatus] = useState<string | null>(null);
@@ -330,10 +414,21 @@ export default function Home() {
           <Link to="/games?quickplay=1" className="btn-neon-green">
             Quick Play
           </Link>
-          <Link
-            to="/settings"
-            className="px-6 py-3 rounded-lg font-bold uppercase tracking-wider transition-all duration-300 cursor-pointer bg-transparent border-2 border-gray-600 text-gray-400 hover:border-[--color-neon-green] hover:text-[--color-neon-green]"
-          >
+          <Link to="/daily" className="px-6 py-3 rounded-lg font-bold uppercase tracking-wider transition-all duration-300 cursor-pointer bg-transparent border-2 border-orange-500 text-orange-400 hover:bg-orange-500/20">
+            Daily Challenge
+          </Link>
+        </div>
+
+        {/* Notification Bell & Nav */}
+        <div className="flex gap-4 justify-center items-center mt-4 animate-fade-up animate-delay-4">
+          <NotificationBell />
+          <Link to="/hall-of-fame" className="text-sm text-gray-500 hover:text-[--color-neon-green] transition-colors">
+            Hall of Fame
+          </Link>
+          <Link to="/rivalries" className="text-sm text-gray-500 hover:text-[--color-neon-purple] transition-colors">
+            AI Rivalries
+          </Link>
+          <Link to="/settings" className="text-sm text-gray-500 hover:text-[--color-neon-cyan] transition-colors">
             Settings
           </Link>
         </div>
@@ -494,6 +589,12 @@ export default function Home() {
 
       {/* Feature 9: Global Leaderboard */}
       <LeaderboardSection />
+
+      {/* Seasonal Events Section */}
+      <SeasonalEventsSection />
+
+      {/* Retention Features Showcase */}
+      <RetentionFeaturesSection />
 
       {/* CTA Section */}
       <section className="container mx-auto px-4 py-16 text-center">

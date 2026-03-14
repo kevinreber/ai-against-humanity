@@ -361,8 +361,20 @@ export const selectWinner = mutation({
                   : newWins >= 1
                     ? "Winner"
                     : undefined;
+          // Track AI personas beaten by human winner
+          const aiBeaten = [...(user.aiPersonasBeaten ?? [])];
+          const allGamePlayers = await ctx.db
+            .query("gamePlayers")
+            .withIndex("by_game", (q) => q.eq("gameId", round.gameId))
+            .collect();
+          for (const gp of allGamePlayers) {
+            if (gp.isAi && gp.aiPersonaId && !aiBeaten.includes(gp.aiPersonaId)) {
+              aiBeaten.push(gp.aiPersonaId);
+            }
+          }
           await ctx.db.patch(player.userId, {
             gamesWon: newWins,
+            aiPersonasBeaten: aiBeaten,
             ...(title ? { title } : {}),
           });
         }
