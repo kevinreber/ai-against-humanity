@@ -6,14 +6,15 @@ import type { Id } from "../../convex/_generated/dataModel";
 import { cn } from "../lib/utils";
 import { AVATAR_OPTIONS, TITLE_THRESHOLDS } from "../lib/constants";
 
+import { generateMeta } from "../lib/seo";
+
 export function meta() {
-  return [
-    { title: "Settings | AI Against Humanity" },
-    {
-      name: "description",
-      content: "Manage your API keys and custom AI personas",
-    },
-  ];
+  return generateMeta({
+    title: "Settings",
+    description: "Manage your AI Against Humanity profile, API keys, and custom AI personas.",
+    path: "/settings",
+    noIndex: true,
+  });
 }
 
 export default function Settings() {

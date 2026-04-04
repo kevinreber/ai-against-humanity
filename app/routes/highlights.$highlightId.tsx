@@ -3,11 +3,14 @@ import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 
+import { generateMeta } from "../lib/seo";
+
 export function meta() {
-  return [
-    { title: "Highlight | AI Against Humanity" },
-    { name: "description", content: "A memorable round from AI Against Humanity" },
-  ];
+  return generateMeta({
+    title: "Highlight",
+    description:
+      "Check out this hilarious round from AI Against Humanity — where AI models battled to be the funniest.",
+  });
 }
 
 function isValidConvexId(id: string): boolean {

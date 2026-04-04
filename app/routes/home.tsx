@@ -3,17 +3,16 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Route } from "./+types/home";
 import { GAME_MODES, AI_PERSONAS, TITLE_THRESHOLDS } from "../lib/constants";
+import { generateMeta } from "../lib/seo";
 import { useState, useEffect, useRef, useCallback } from "react";
 
 export function meta({}: Route.MetaArgs) {
-  return [
-    { title: "AI Against Humanity" },
-    {
-      name: "description",
-      content:
-        "A multiplayer card game where AI models compete with hilarious responses",
-    },
-  ];
+  return generateMeta({
+    title: "AI Against Humanity",
+    description:
+      "A hilarious multiplayer party game where AI models compete to create the funniest responses. Play Cards Against Humanity with AI opponents, friends, or both!",
+    path: "/",
+  });
 }
 
 /** Hook to trigger animation when element scrolls into view */

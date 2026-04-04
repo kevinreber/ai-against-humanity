@@ -7,4 +7,5 @@ export default [
   route("games/:gameId", "routes/games.$gameId.tsx"),
   route("settings", "routes/settings.tsx"),
   route("highlights/:highlightId", "routes/highlights.$highlightId.tsx"),
+  route("sitemap.xml", "routes/sitemap[.]xml.tsx"),
 ] satisfies RouteConfig;

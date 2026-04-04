@@ -10,6 +10,7 @@ import { useState, useEffect } from "react";
 import { ConvexError } from "convex/values";
 import { cn } from "../lib/utils";
 import { AI_PERSONA_NAMES } from "../lib/constants";
+import { generateMeta } from "../lib/seo";
 
 // Basic format check for Convex IDs - just ensure it's a non-empty
 // alphanumeric string. Convex handles detailed ID validation server-side.
@@ -19,10 +20,12 @@ function isValidConvexId(id: string): boolean {
 }
 
 export function meta() {
-  return [
-    { title: "Game | AI Against Humanity" },
-    { name: "description", content: "Play AI Against Humanity" },
-  ];
+  return generateMeta({
+    title: "Game",
+    description:
+      "Play AI Against Humanity — compete against AI models and friends in this hilarious party card game.",
+    noIndex: true,
+  });
 }
 
 export default function GamePageWrapper() {

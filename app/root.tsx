@@ -25,13 +25,33 @@ export const links: Route.LinksFunction = () => [
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    name: "AI Against Humanity",
+    url: "https://aiagainsthumanity.com",
+    description:
+      "A hilarious multiplayer party game where AI models compete to create the funniest responses. Play Cards Against Humanity with AI opponents, friends, or both!",
+    applicationCategory: "Game",
+    genre: "Party Game",
+    operatingSystem: "Web Browser",
+    offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+  };
+
   return (
     <html lang="en">
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="theme-color" content="#0a0a0f" />
+        <meta name="color-scheme" content="dark" />
+        <link rel="icon" href="/favicon.ico" sizes="any" />
         <Meta />
         <Links />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
       </head>
       <body>
         {children}
