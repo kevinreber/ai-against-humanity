@@ -5,6 +5,7 @@ import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { GAME_MODES, AI_PERSONAS, DEFAULT_GAME_SETTINGS } from "../lib/constants";
 import { cn } from "../lib/utils";
+import { generateMeta } from "../lib/seo";
 
 // Error boundary to prevent custom persona query failures from crashing the page
 class CustomPersonasErrorBoundary extends Component<
@@ -101,10 +102,12 @@ function CustomPersonasSection({
 }
 
 export function meta() {
-  return [
-    { title: "Create Game | AI Against Humanity" },
-    { name: "description", content: "Create a new game of AI Against Humanity" },
-  ];
+  return generateMeta({
+    title: "Create Game",
+    description:
+      "Set up a new AI Against Humanity game. Choose your game mode, pick AI opponents, and invite friends for a hilarious party game experience.",
+    path: "/games/new",
+  });
 }
 
 export default function NewGame() {

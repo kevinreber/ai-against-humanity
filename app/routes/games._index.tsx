@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
+import { generateMeta } from "../lib/seo";
 
 function formatTimeAgo(timestamp: number): string {
   const seconds = Math.floor((Date.now() - timestamp) / 1000);
@@ -16,10 +17,12 @@ function formatTimeAgo(timestamp: number): string {
 }
 
 export function meta() {
-  return [
-    { title: "Games | AI Against Humanity" },
-    { name: "description", content: "Join a game of AI Against Humanity" },
-  ];
+  return generateMeta({
+    title: "Browse Games",
+    description:
+      "Find and join open AI Against Humanity lobbies. Quick play, create a game, or enter an invite code to start playing instantly.",
+    path: "/games",
+  });
 }
 
 export default function GamesIndex() {
